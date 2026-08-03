@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Report Dashboard | {{ college }}</title>
+<link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+</head>
+<body>
+<div class="page-wrap">
+
+  <header class="app-header">
+    <h1>{{ college }}</h1>
+    <h2>{{ department }}</h2>
+    <h3>{{ system }}</h3>
+  </header>
+
+  <main class="main-content">
+
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
+      <a href="{{ url_for('generate_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-broadcast"></i> Generate Session</a>
+      <a href="{{ url_for('download_csv') }}" class="btn btn-outline btn-sm"><i class="bi bi-filetype-csv"></i> Download CSV</a>
+      <button class="btn btn-outline btn-sm" id="downloadPdfBtn"><i class="bi bi-file-earmark-pdf"></i> Download PDF</button>
+      <button class="btn btn-outline btn-sm" id="printBtn"><i class="bi bi-printer"></i> Print Report</button>
+      <button class="btn btn-danger btn-sm" id="openResetModal"><i class="bi bi-eraser"></i> Reset Attendance</button>
+      <a href="{{ url_for('logout_teacher') }}" class="btn btn-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Logout</a>
+    </div>
+
+    <!-- ============ TODAY'S SUMMARY ============ -->
+    <div class="section-title"><i class="bi bi-calendar-check"></i> Today's Summary</div>
+    <div class="grid grid-6" id="todaySummaryGrid"></div>
+
+    <!-- ============ TOP LEVEL STATS ============ -->
+    <div class="section-title"><i class="bi bi-clipboard-data"></i> Overview</div>
+    <div class="grid grid-3">
+      <div class="stat-card">
+        <div class="label">Total Attendance Records</div>
+        <div class="value" id="totalRecords">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Total Students Present (Unique)</div>
+        <div class="value" id="totalPresent">0</div>
+      </div>
+      <div class="stat-card">
+        <div class="label">Report Generated</div>
+        <div class="value" style="font-size:1rem;" id="generatedAt">--</div>
+      </div>
+    </div>
+
+    <!-- ============ CHARTS ============ -->
+    <div class="section-title"><i class="bi bi-pie-chart"></i> Charts</div>
+    <div class="grid grid-2">
+      <div class="glass-card">
+        <h3 style="margin-top:0;">Overall Attendance Distribution</h3>
+        <canvas id="pieChart" height="220"></canvas>
+      </div>
+      <div class="glass-card">
+        <h3 style="margin-top:0;">Subject Wise Attendance</h3>
+        <canvas id="barChart" height="220"></canvas>
+      </div>
+    </div>
+    <div class="glass-card" style="margin-top:20px;">
+      <h3 style="margin-top:0;">Student Wise Attendance</h3>
+      <canvas id="hbarChart" height="260"></canvas>
+    </div>
+
+    <!-- ============ SUBJECT ANALYTICS ============ -->
+    <div class="section-title"><i class="bi bi-journal-bookmark"></i> Subject Analytics</div>
+    <div class="grid grid-3" id="subjectCards"></div>
+
+    <!-- ============ DEFAULTER DASHBOARD ============ -->
+    <div class="section-title"><i class="bi bi-exclamation-triangle"></i> Defaulter Dashboard</div>
+    <div class="grid grid-3">
+      <div class="stat-card safe">
+        <div class="label">Safe Students (&ge;85%)</div>
+        <div class="value" id="safeCount">0</div>
+      </div>
+      <div class="stat-card warning">
+        <div class="label">Warning Students (75&ndash;84.99%)</div>
+        <div class="value" id="warningCount">0</div>
+      </div>
+      <div class="stat-card danger">
+        <div class="label">Defaulter Students (&lt;75%)</div>
+        <div class="value" id="defaulterCount">0</div>
+      </div>
+    </div>
+    <div class="glass-card" style="margin-top:16px;">
+      <div class="table-wrap">
+        <table class="data-table" id="defaulterTable">
+          <thead>
+            <tr><th>Student ID</th><th>Student Name</th><th>Subject</th><th>Attendance %</th><th>Status</th></tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ============ STUDENT ANALYTICS SEARCH ============ -->
+    <div class="section-title"><i class="bi bi-person-lines-fill"></i> Student Attendance Analytics</div>
+    <div class="glass-card">
+      <div class="form-group">
+        <label>Search by Student ID or Name</label>
+        <input type="text" id="studentSearchInput" class="form-control" placeholder="Type student ID or name...">
+      </div>
+      <div id="studentSearchResults" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
+      <div id="studentAnalyticsResult"></div>
+    </div>
+
+    <!-- ============ ATTENDANCE TABLE + FILTERS ============ -->
+    <div class="section-title"><i class="bi bi-table"></i> Attendance Records</div>
+    <div class="glass-card">
+      <div class="filter-bar">
+        <input type="text" id="f_student_id" class="form-control" placeholder="Search Student ID">
+        <input type="text" id="f_student_name" class="form-control" placeholder="Search Student Name">
+        <input type="date" id="f_date" class="form-control">
+        <select id="f_subject" class="form-control">
+          <option value="">All Subjects</option>
+          {% for s in subjects %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
+        </select>
+        <input type="text" id="f_faculty" class="form-control" placeholder="Search Faculty">
+        <input type="text" id="f_session_id" class="form-control" placeholder="Search Session ID">
+        <button class="btn btn-primary btn-sm" id="applyFilters"><i class="bi bi-funnel"></i> Filter</button>
+        <button class="btn btn-outline btn-sm" id="clearFilters"><i class="bi bi-x-circle"></i> Clear</button>
+      </div>
+
+      <div class="table-wrap">
+        <table class="data-table" id="attendanceTable">
+          <thead>
+            <tr>
+              <th>Student ID</th><th>Name</th><th>Date</th><th>Session ID</th>
+              <th>Subject</th><th>Faculty</th><th>Time</th>
+            </tr>
+          </thead>
+          <tbody></tbody>
+        </table>
+      </div>
+    </div>
+  </main>
+
+  <footer class="app-footer">{{ footer }}</footer>
+</div>
+
+<!-- ============ RESET ATTENDANCE MODAL ============ -->
+<div class="modal-overlay" id="resetModal">
+  <div class="modal-box">
+    <h3><i class="bi bi-exclamation-octagon"></i> Confirm Reset</h3>
+    <p style="color:var(--text-muted);font-size:.88rem;">
+      This will permanently delete ALL attendance records. Student list will NOT be affected.
+      Please re-enter the Teacher Security Key to confirm.
+    </p>
+    <div id="resetAlert"></div>
+    <div class="form-group">
+      <label>Teacher Security Key</label>
+      <input type="password" id="resetKeyInput" class="form-control" placeholder="Security Key">
+    </div>
+    <div style="display:flex;gap:10px;">
+      <button class="btn btn-danger btn-block" id="confirmResetBtn"><i class="bi bi-trash3"></i> Confirm Reset</button>
+      <button class="btn btn-outline btn-block" id="cancelResetBtn">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='script.js') }}"></script>
+<script>
+let pieChartInstance, barChartInstance, hbarChartInstance;
+
+function buildFilterQuery() {
+  const params = new URLSearchParams();
+  const map = {
+    student_id: "f_student_id", student_name: "f_student_name", date: "f_date",
+    subject: "f_subject", faculty: "f_faculty", session_id: "f_session_id",
+  };
+  for (const [key, id] of Object.entries(map)) {
+    const val = document.getElementById(id).value.trim();
+    if (val) params.append(key, val);
+  }
+  return params.toString();
+}
+
+async function loadReportData() {
+  const query = buildFilterQuery();
+  const data = await getJSON("/report_data?" + query);
+
+  document.getElementById("totalRecords").innerText = data.total_records;
+  document.getElementById("totalPresent").innerText = data.total_students_present;
+  document.getElementById("generatedAt").innerText = new Date().toLocaleString();
+
+  renderAttendanceTable(data.rows);
+  renderSubjectCards(data.subject_analytics);
+  renderDefaulterDashboard(data.defaulter_dashboard);
+  renderTodaySummary(data.today_summary);
+  renderCharts(data.subject_analytics, data.defaulter_dashboard);
+}
+
+function renderAttendanceTable(rows) {
+  const tbody = document.querySelector("#attendanceTable tbody");
+  tbody.innerHTML = "";
+  if (rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No records found</td></tr>';
+    return;
+  }
+  rows.forEach(r => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><a class="link-id" onclick="openStudentProfile('${r.Student_ID}')">${r.Student_ID}</a></td>
+      <td>${r.Name}</td><td>${r.Date}</td><td>${r.Session_ID}</td>
+      <td>${r.Subject}</td><td>${r.Faculty}</td><td>${r.Time}</td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderSubjectCards(subjects) {
+  const wrap = document.getElementById("subjectCards");
+  wrap.innerHTML = "";
+  subjects.forEach(s => {
+    const colorClass = progressColorClass(s.avg_percentage);
+    const card = document.createElement("div");
+    card.className = "glass-card subject-card";
+    card.innerHTML = `
+      <div class="subject-code">${s.subject}</div>
+      <div class="faculty-name">${s.faculty}</div>
+      <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--text-muted);">
+        <span>Sessions: <b style="color:var(--text-main);">${s.total_sessions}</b></span>
+        <span>Records: <b style="color:var(--text-main);">${s.total_records}</b></span>
+      </div>
+      <div class="progress-outer"><div class="progress-inner ${colorClass}" style="width:${s.avg_percentage}%;"></div></div>
+      <div style="text-align:right;margin-top:4px;font-weight:600;">${s.avg_percentage}%</div>
+    `;
+    wrap.appendChild(card);
+  });
+}
+
+function renderDefaulterDashboard(dd) {
+  document.getElementById("safeCount").innerText = dd.safe_count;
+  document.getElementById("warningCount").innerText = dd.warning_count;
+  document.getElementById("defaulterCount").innerText = dd.defaulter_count;
+
+  const tbody = document.querySelector("#defaulterTable tbody");
+  tbody.innerHTML = "";
+  if (dd.table_rows.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No data yet</td></tr>';
+    return;
+  }
+  dd.table_rows.forEach(row => {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td><a class="link-id" onclick="openStudentProfile('${row.student_id}')">${row.student_id}</a></td>
+      <td>${row.name}</td><td>${row.subject}</td><td>${row.percentage}%</td>
+      <td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>`;
+    tbody.appendChild(tr);
+  });
+}
+
+function renderTodaySummary(ts) {
+  const grid = document.getElementById("todaySummaryGrid");
+  grid.innerHTML = `
+    <div class="stat-card"><div class="label">Date</div><div class="value" style="font-size:1.1rem;">${ts.today_date}</div></div>
+    <div class="stat-card"><div class="label">Sessions Today</div><div class="value">${ts.sessions_conducted_today}</div></div>
+    <div class="stat-card"><div class="label">Attendance Entries</div><div class="value">${ts.attendance_entries_today}</div></div>
+    <div class="stat-card"><div class="label">Avg Attendance</div><div class="value">${ts.average_attendance_today}%</div></div>
+    <div class="stat-card safe"><div class="label">Best Subject</div><div class="value" style="font-size:1.3rem;">${ts.best_subject}</div></div>
+    <div class="stat-card danger"><div class="label">Lowest Subject</div><div class="value" style="font-size:1.3rem;">${ts.lowest_subject}</div></div>
+  `;
+}
+
+function renderCharts(subjects, defaulterDash) {
+  const ctxPie = document.getElementById("pieChart");
+  const ctxBar = document.getElementById("barChart");
+  const ctxHbar = document.getElementById("hbarChart");
+
+  const chartColors = ["#3d8bfd", "#6ee7f5", "#2ecc71", "#f5a623", "#ff5c6c", "#9b59b6"];
+
+  if (pieChartInstance) pieChartInstance.destroy();
+  pieChartInstance = new Chart(ctxPie, {
+    type: "pie",
+    data: {
+      labels: ["Safe", "Warning", "Defaulter"],
+      datasets: [{
+        data: [defaulterDash.safe_count, defaulterDash.warning_count, defaulterDash.defaulter_count],
+        backgroundColor: ["#2ecc71", "#f5a623", "#ff5c6c"],
+      }]
+    },
+    options: { plugins: { legend: { labels: { color: "#eaf1ff" } } } }
+  });
+
+  if (barChartInstance) barChartInstance.destroy();
+  barChartInstance = new Chart(ctxBar, {
+    type: "bar",
+    data: {
+      labels: subjects.map(s => s.subject),
+      datasets: [{
+        label: "Avg Attendance %",
+        data: subjects.map(s => s.avg_percentage),
+        backgroundColor: chartColors,
+      }]
+    },
+    options: {
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" } },
+        y: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 }
+      }
+    }
+  });
+
+  const studentRows = defaulterDash.student_summary.slice(0, 15);
+  if (hbarChartInstance) hbarChartInstance.destroy();
+  hbarChartInstance = new Chart(ctxHbar, {
+    type: "bar",
+    data: {
+      labels: studentRows.map(s => s.student_id),
+      datasets: [{
+        label: "Overall Attendance %",
+        data: studentRows.map(s => s.overall_percentage),
+        backgroundColor: "#6ee7f5",
+      }]
+    },
+    options: {
+      indexAxis: "y",
+      plugins: { legend: { display: false } },
+      scales: {
+        x: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 },
+        y: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" } }
+      }
+    }
+  });
+}
+
+function openStudentProfile(studentId) {
+  window.open("/student_profile/" + encodeURIComponent(studentId), "_blank");
+}
+
+// ---- Filters ----
+document.getElementById("applyFilters").addEventListener("click", loadReportData);
+document.getElementById("clearFilters").addEventListener("click", () => {
+  ["f_student_id","f_student_name","f_date","f_subject","f_faculty","f_session_id"].forEach(id => {
+    document.getElementById(id).value = "";
+  });
+  loadReportData();
+});
+
+// ---- Student search ----
+const studentSearchInput = document.getElementById("studentSearchInput");
+const studentSearchResults = document.getElementById("studentSearchResults");
+const studentAnalyticsResult = document.getElementById("studentAnalyticsResult");
+
+let searchTimeout;
+studentSearchInput.addEventListener("input", () => {
+  clearTimeout(searchTimeout);
+  const q = studentSearchInput.value.trim();
+  if (!q) { studentSearchResults.innerHTML = ""; return; }
+  searchTimeout = setTimeout(async () => {
+    const data = await getJSON("/student_search?q=" + encodeURIComponent(q));
+    studentSearchResults.innerHTML = "";
+    data.matches.forEach(m => {
+      const chip = document.createElement("button");
+      chip.className = "btn btn-outline btn-sm";
+      chip.innerText = `${m.student_id} - ${m.name}`;
+      chip.onclick = () => loadStudentAnalytics(m.student_id);
+      studentSearchResults.appendChild(chip);
+    });
+  }, 250);
+});
+
+async function loadStudentAnalytics(studentId) {
+  const data = await getJSON("/student_analytics/" + encodeURIComponent(studentId));
+  if (data.status !== "success") {
+    studentAnalyticsResult.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
+    return;
+  }
+  const a = data.data;
+  let rowsHtml = a.breakdown.map(b => `
+    <tr>
+      <td>${b.subject}</td><td>${b.faculty}</td>
+      <td>${b.sessions_conducted}</td><td>${b.sessions_attended}</td>
+      <td>${b.percentage}%</td>
+    </tr>`).join("");
+
+  studentAnalyticsResult.innerHTML = `
+    <div class="grid grid-2" style="margin-bottom:14px;">
+      <div class="stat-card"><div class="label">Student</div><div class="value" style="font-size:1.1rem;">${a.name} (${a.student_id})</div></div>
+      <div class="stat-card ${a.status === 'Safe' ? 'safe' : a.status === 'Warning' ? 'warning' : 'danger'}">
+        <div class="label">Overall Attendance</div><div class="value">${a.overall_percentage}%</div>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table class="data-table">
+        <thead><tr><th>Subject</th><th>Faculty</th><th>Sessions Conducted</th><th>Sessions Attended</th><th>Attendance %</th></tr></thead>
+        <tbody>${rowsHtml}</tbody>
+      </table>
+    </div>
+    <div style="text-align:right;margin-top:10px;">
+      <a href="/student_profile/${a.student_id}" target="_blank" class="btn btn-outline btn-sm"><i class="bi bi-person-badge"></i> Open Full Profile</a>
+    </div>
+  `;
+}
+
+// ---- Reset Attendance ----
+document.getElementById("openResetModal").addEventListener("click", () => openModal("resetModal"));
+document.getElementById("cancelResetBtn").addEventListener("click", () => closeModal("resetModal"));
+document.getElementById("confirmResetBtn").addEventListener("click", async () => {
+  const key = document.getElementById("resetKeyInput").value.trim();
+  const resetAlert = document.getElementById("resetAlert");
+  const data = await postJSON("/reset_attendance", { security_key: key });
+  if (data.status === "success") {
+    showAlert(resetAlert, data.message, "success");
+    setTimeout(() => {
+      closeModal("resetModal");
+      document.getElementById("resetKeyInput").value = "";
+      clearAlert(resetAlert);
+      loadReportData();
+    }, 1200);
+  } else {
+    showAlert(resetAlert, data.message, "error");
+  }
+});
+
+// ---- Downloads / Print ----
+document.getElementById("downloadPdfBtn").addEventListener("click", () => {
+  const query = buildFilterQuery();
+  window.open("/download_pdf?" + query, "_blank");
+});
+document.getElementById("printBtn").addEventListener("click", () => window.print());
+
+// Initial + periodic refresh (keeps table & live counts fresh without full page reload)
+loadReportData();
+setInterval(loadReportData, 15000);
+</script>
+</body>
+</html>
