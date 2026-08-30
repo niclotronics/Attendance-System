@@ -40,9 +40,27 @@ from reportlab.lib.enums import TA_CENTER
 # ==================================================================
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-CONFIG_PATH = os.path.join(BASE_DIR, "config.json")
-STUDENTS_CSV = os.path.join(BASE_DIR, "students.csv")
-ATTENDANCE_CSV = os.path.join(BASE_DIR, "attendance.csv")
+
+def get_storage_path(filename):
+    """
+    If running in a read-only environment like Vercel (/var/task),
+    fallback to writing in /tmp directory so CSV operations succeed cleanly.
+    """
+    base_file = os.path.join(BASE_DIR, filename)
+    if os.environ.get("VERCEL") or os.environ.get("AWS_LAMBDA_FUNCTION_NAME") or not os.access(BASE_DIR, os.W_OK):
+        tmp_file = os.path.join("/tmp", filename)
+        if not os.path.exists(tmp_file) and os.path.exists(base_file):
+            try:
+                import shutil
+                shutil.copyfile(base_file, tmp_file)
+            except Exception:
+                pass
+        return tmp_file
+    return base_file
+
+CONFIG_PATH = get_storage_path("config.json")
+STUDENTS_CSV = get_storage_path("students.csv")
+ATTENDANCE_CSV = get_storage_path("attendance.csv")
 
 app = Flask(__name__)
 app.secret_key = "gpp-l2-smart-attendance-secret-key-2026"
@@ -374,8 +392,11 @@ def mark_attendance():
                     active_session["teacher_lat"], active_session["teacher_lng"],
                     student_lat, student_lng
                 )
-                max_allowed = active_session.get("allowed_radius_meters", 50)
-                effective_allowed = max(max_allowed, 350) if same_network else max_allowed
+                # Indoor GPS Jitter compensation:
+                # Desktop browser IP location & indoor phone GPS signals can jitter by 150m-250m inside rooms/buildings.
+                # Allow a baseline indoor tolerance of 250m (or same-network 400m) to ensure students in the room pass cleanly.
+                indoor_tolerance = 400 if same_network else 250
+                effective_allowed = max(max_allowed, indoor_tolerance)
 
                 if dist_meters > effective_allowed:
                     return jsonify(
