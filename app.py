@@ -92,6 +92,19 @@ active_session = {
 # HELPER FUNCTIONS
 # ==================================================================
 
+def is_same_network(ip1, ip2):
+    """Check if two IP addresses are identical or share the same /24 local subnet."""
+    if not ip1 or not ip2:
+        return False
+    if ip1 == ip2 or ip1 in ["127.0.0.1", "localhost"] or ip2 in ["127.0.0.1", "localhost"]:
+        return True
+    p1 = ip1.split(".")
+    p2 = ip2.split(".")
+    if len(p1) == 4 and len(p2) == 4:
+        return p1[:3] == p2[:3]
+    return False
+
+
 def haversine_distance(lat1, lon1, lat2, lon2):
     """Calculate distance between two GPS coordinates in meters using Haversine formula."""
     try:
@@ -344,22 +357,30 @@ def mark_attendance():
         if active_session.get("geo_enabled"):
             student_lat = data.get("student_lat")
             student_lng = data.get("student_lng")
-            if student_lat is None or student_lng is None:
-                return jsonify(
-                    status="error",
-                    message="GPS Location required for this session! Please enable Location Services on your device."
-                ), 200
+            teacher_ip = active_session.get("teacher_ip")
+            student_ip = request.remote_addr
 
-            if active_session.get("teacher_lat") is not None and active_session.get("teacher_lng") is not None:
+            same_network = is_same_network(teacher_ip, student_ip)
+
+            if student_lat is None or student_lng is None:
+                if not same_network:
+                    return jsonify(
+                        status="error",
+                        message="GPS Location required for this session! Please enable Location Services on your device."
+                    ), 200
+
+            if active_session.get("teacher_lat") is not None and active_session.get("teacher_lng") is not None and student_lat is not None:
                 dist_meters = haversine_distance(
                     active_session["teacher_lat"], active_session["teacher_lng"],
                     student_lat, student_lng
                 )
                 max_allowed = active_session.get("allowed_radius_meters", 50)
-                if dist_meters > max_allowed:
+                effective_allowed = max(max_allowed, 350) if same_network else max_allowed
+
+                if dist_meters > effective_allowed:
                     return jsonify(
                         status="error",
-                        message=f"Location Out of Bounds! You are {int(dist_meters)}m away from classroom (Max allowed: {max_allowed}m)."
+                        message=f"Location Out of Bounds! You are {int(dist_meters)}m away from classroom (Max allowed: {effective_allowed}m)."
                     ), 200
 
         # 5. Anti-proxy cooldown check per browser
@@ -524,6 +545,7 @@ def start_session():
         "geo_enabled": geo_enabled,
         "teacher_lat": float(teacher_lat) if teacher_lat is not None else None,
         "teacher_lng": float(teacher_lng) if teacher_lng is not None else None,
+        "teacher_ip": request.remote_addr,
         "allowed_radius_meters": allowed_radius,
     })
 
