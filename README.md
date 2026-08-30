@@ -1,6 +1,6 @@
 # 🎓 Government Polytechnic Pune - Smart Attendance System v2.0
 > **Electronics and Telecommunication Department (L2)**  
-> **Author**: Nikhil Wani  
+> **Author**: @niclotronics  
 > **Stack**: Python (Flask) + HTML5 + Vanilla CSS (Glassmorphic) + JavaScript + CSV Storage  
 
 ---

@@ -4,7 +4,7 @@
  Electronics and Telecommunication Department
  Smart Attendance System v2.0 for L2
 ==================================================================
- Author  : Nikhil Wani
+ Author  : @niclotronics
  Stack   : Flask + HTML + Vanilla CSS + JavaScript + CSV
  Storage : Plain CSV files (No DB required, optimized file I/O)
 ==================================================================
@@ -64,7 +64,7 @@ FACULTY_MAP = {
 COLLEGE_HEADER = "Government Polytechnic Pune"
 DEPARTMENT_HEADER = "Electronics and Telecommunication Department"
 SYSTEM_HEADER = "Smart Attendance System v2.0 for L2"
-FOOTER_TEXT = "Designed by Nikhil Wani"
+FOOTER_TEXT = "Designed by @niclotronics"
 
 csv_lock = threading.Lock()
 
