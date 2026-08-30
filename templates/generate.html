@@ -1,4 +1,4 @@
-`<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="UTF-8">
@@ -6,6 +6,7 @@
 <title>Generate Attendance | {{ college }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
 </head>
 <body>
 <div class="page-wrap">
@@ -18,8 +19,9 @@
 
   <main class="main-content">
 
-    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;">
-      <a href="{{ url_for('report_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-bar-chart-line"></i> Report Dashboard</a>
+    <!-- Top Action Navigation -->
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+      <a href="{{ url_for('report_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-bar-chart-line"></i> Report & Analytics Hub</a>
       <a href="{{ url_for('logout_teacher') }}" class="btn btn-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Logout</a>
     </div>
 
@@ -27,12 +29,12 @@
 
       <!-- ============ SESSION CONTROL CARD ============ -->
       <div class="glass-card">
-        <h3><i class="bi bi-broadcast"></i> Attendance Session Control</h3>
+        <h3 style="margin-top:0;"><i class="bi bi-broadcast"></i> Attendance Session Control</h3>
         <div id="controlAlert"></div>
 
         <div id="startForm">
           <div class="form-group">
-            <label for="subject">Select Subject</label>
+            <label for="subject"><i class="bi bi-journal-check"></i> Select Subject</label>
             <select id="subject" class="form-control">
               <option value="">-- Choose Subject --</option>
               {% for s in subjects %}
@@ -40,16 +42,28 @@
               {% endfor %}
             </select>
           </div>
+
+          <div class="form-group">
+            <label for="duration"><i class="bi bi-clock-history"></i> Session Validity Timer</label>
+            <select id="duration" class="form-control">
+              <option value="60">1 Minute (60s)</option>
+              <option value="120" selected>2 Minutes (120s - Recommended)</option>
+              <option value="300">5 Minutes (300s)</option>
+              <option value="600">10 Minutes (600s)</option>
+            </select>
+          </div>
+
           <button class="btn btn-primary btn-block" id="startBtn">
-            <i class="bi bi-play-circle"></i> Start Attendance Session
+            <i class="bi bi-play-circle-fill"></i> Start Attendance Session
           </button>
         </div>
 
         <div id="activeSessionBox" style="display:none;">
-          <div class="stat-card" style="margin-bottom:14px;">
-            <div class="label">Session ID</div>
-            <div class="value" id="sessValSessionId">--</div>
+          <div class="stat-card" style="margin-bottom:14px;background:rgba(0,173,181,0.08);border-color:rgba(0,173,181,0.3);">
+            <div class="label">Live Session ID</div>
+            <div class="value" id="sessValSessionId" style="color:var(--accent-glow);">--</div>
           </div>
+          
           <div class="grid grid-2" style="margin-bottom:14px;">
             <div class="stat-card">
               <div class="label">Subject</div>
@@ -61,24 +75,35 @@
             </div>
           </div>
 
-          <div class="label" style="text-align:center;">Generated Password</div>
+          <div class="label" style="text-align:center;font-weight:600;color:var(--text-muted);">Generated Session Password</div>
           <div class="session-password" id="sessValPassword">------</div>
           <div class="countdown" id="sessCountdown">02:00</div>
           <div style="text-align:center;color:var(--text-muted);font-size:.8rem;margin-top:4px;" id="sessExpiry">Expiry Time: --</div>
 
+          <!-- QR Code Renderer -->
+          <div style="text-align:center;margin-top:16px;">
+            <div class="qr-container" id="sessionQRCode"></div>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 12px;">Students can scan QR Code to auto-fill password</p>
+            <button class="btn btn-secondary btn-sm btn-block" onclick="openModal('projectorModal')">
+              <i class="bi bi-aspect-ratio"></i> Fullscreen Classroom Projector Mode
+            </button>
+          </div>
+
           <button class="btn btn-danger btn-block" id="endBtn" style="margin-top:18px;">
-            <i class="bi bi-stop-circle"></i> End Attendance Session
+            <i class="bi bi-stop-circle-fill"></i> End Attendance Session
           </button>
         </div>
       </div>
 
-      <!-- ============ LIVE DASHBOARD CARD ============ -->
+      <!-- ============ LIVE REAL-TIME DASHBOARD CARD ============ -->
       <div class="glass-card">
-        <h3><span class="live-dot" id="liveDot" style="display:none;"></span> Live Attendance Dashboard</h3>
-        <div id="liveEmpty" style="color:var(--text-muted);text-align:center;padding:30px 0;">
-          <i class="bi bi-moon-stars" style="font-size:2rem;"></i>
-          <p>No active session right now.</p>
+        <h3 style="margin-top:0;"><span class="live-dot" id="liveDot" style="display:none;"></span> Live Attendance Dashboard</h3>
+        
+        <div id="liveEmpty" style="color:var(--text-muted);text-align:center;padding:50px 0;">
+          <i class="bi bi-moon-stars" style="font-size:2.4rem;color:var(--text-subtle);"></i>
+          <p style="margin-top:10px;font-size:0.95rem;">No active session running right now.<br>Select a subject and click Start to launch attendance.</p>
         </div>
+
         <div id="liveBox" style="display:none;">
           <div class="grid grid-2">
             <div class="stat-card safe">
@@ -90,22 +115,59 @@
               <div class="value" id="liveTotal">0</div>
             </div>
           </div>
-          <div style="margin-top:14px;">
-            <div class="label" style="font-size:.78rem;color:var(--text-muted);margin-bottom:6px;">Attendance Percentage</div>
+
+          <div style="margin-top:16px;">
+            <div class="label" style="font-size:.8rem;color:var(--text-muted);margin-bottom:6px;display:flex;justify-content:space-between;">
+              <span>Attendance Rate</span>
+              <span id="livePercentText" style="font-weight:700;color:var(--text-main);">0%</span>
+            </div>
             <div class="progress-outer">
               <div class="progress-inner" id="liveProgressBar" style="width:0%;"></div>
             </div>
-            <div style="text-align:right;margin-top:4px;font-weight:600;" id="livePercentText">0%</div>
           </div>
+
+          <div style="margin-top:20px;">
+            <div class="label" style="font-size:.82rem;color:var(--text-muted);margin-bottom:8px;"><i class="bi bi-activity"></i> Live Student Submissions Ticker</div>
+            <div id="liveTicker" style="background:rgba(15,23,42,0.8);border:1px solid var(--glass-border);border-radius:var(--radius-md);max-height:160px;overflow-y:auto;padding:8px 12px;">
+              <p style="font-size:0.82rem;color:var(--text-subtle);margin:0;text-align:center;">Waiting for student submissions...</p>
+            </div>
+          </div>
+
           <div style="text-align:center;margin-top:16px;">
-            <span class="badge badge-safe"><span class="live-dot"></span> LIVE &mdash; Status: Active</span>
+            <span class="badge badge-safe"><span class="live-dot"></span> SESSION ACTIVE &mdash; Real-Time Polling</span>
           </div>
         </div>
       </div>
+
     </div>
   </main>
 
   <footer class="app-footer">{{ footer }}</footer>
+</div>
+
+<!-- ============ FULLSCREEN PROJECTOR MODAL ============ -->
+<div class="modal-overlay" id="projectorModal">
+  <div class="modal-box projector-qr-box" style="max-width:650px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+      <span class="badge badge-safe"><span class="live-dot"></span> CLASSROOM PROJECTOR DISPLAY</span>
+      <button class="modal-close" onclick="closeModal('projectorModal')">&times;</button>
+    </div>
+    
+    <h2 id="projSubject">SUBJECT CODE</h2>
+    <p id="projSessionId" style="color:var(--accent-glow);font-weight:700;font-size:1.2rem;">SESSION ID</p>
+    
+    <div class="qr-container" id="projQRCode" style="max-width:280px;padding:20px;margin:20px auto;"></div>
+    
+    <div style="margin-top:14px;">
+      <div style="font-size:0.9rem;color:var(--text-muted);">Attendance Code:</div>
+      <div class="session-password" id="projPassword" style="font-size:3rem;margin:10px auto;max-width:320px;">------</div>
+    </div>
+
+    <div style="display:flex;justify-content:center;gap:20px;margin-top:16px;">
+      <div><span style="color:var(--text-muted);">Time Remaining:</span> <strong id="projCountdown" style="color:var(--warning);font-size:1.2rem;">00:00</strong></div>
+      <div><span style="color:var(--text-muted);">Students Marked:</span> <strong id="projPresent" style="color:var(--success);font-size:1.2rem;">0</strong></div>
+    </div>
+  </div>
 </div>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>
@@ -149,6 +211,30 @@ function renderActiveSession(sess) {
   bar.style.width = sess.attendance_percentage + "%";
   bar.className = "progress-inner " + progressColorClass(sess.attendance_percentage);
 
+  // Update Projector Mode details
+  document.getElementById("projSubject").innerText = sess.subject + " (" + sess.faculty + ")";
+  document.getElementById("projSessionId").innerText = "SESSION: " + sess.session_id;
+  document.getElementById("projPassword").innerText = sess.password_expired ? "EXPIRED" : sess.password;
+  document.getElementById("projPresent").innerText = sess.present_count + " / " + sess.total_students;
+
+  // Render QR Code
+  const qrUrl = window.location.origin + "/?session=" + sess.session_id + "&password=" + sess.password;
+  renderQRCode("sessionQRCode", qrUrl, 160);
+  renderQRCode("projQRCode", qrUrl, 240);
+
+  // Render Live Ticker
+  const ticker = document.getElementById("liveTicker");
+  if (sess.recent_present && sess.recent_present.length > 0) {
+    ticker.innerHTML = sess.recent_present.map(p => `
+      <div style="display:flex;justify-content:space-between;align-items:center;padding:4px 0;border-bottom:1px solid rgba(255,255,255,0.05);font-size:0.82rem;">
+        <span><i class="bi bi-check-circle-fill" style="color:var(--success);"></i> <strong>${p.name}</strong> (${p.student_id})</span>
+        <span style="color:var(--text-subtle);font-size:0.75rem;">${p.time}</span>
+      </div>
+    `).join("");
+  } else {
+    ticker.innerHTML = `<p style="font-size:0.82rem;color:var(--text-subtle);margin:0;text-align:center;">No students marked yet</p>`;
+  }
+
   localRemaining = sess.remaining_seconds;
   updateCountdownDisplay();
 
@@ -158,54 +244,56 @@ function renderActiveSession(sess) {
     updateCountdownDisplay();
     if (localRemaining <= 0) {
       document.getElementById("sessValPassword").innerText = "EXPIRED";
+      document.getElementById("projPassword").innerText = "EXPIRED";
     }
   }, 1000);
 }
 
 function updateCountdownDisplay() {
-  document.getElementById("sessCountdown").innerText = formatMMSS(localRemaining);
+  const formatted = formatMMSS(localRemaining);
+  document.getElementById("sessCountdown").innerText = formatted;
+  document.getElementById("projCountdown").innerText = formatted;
   const expiry = new Date(Date.now() + localRemaining * 1000);
-  document.getElementById("sessExpiry").innerText =
-    "Expiry Time: " + expiry.toLocaleTimeString();
+  document.getElementById("sessExpiry").innerText = "Expiry Time: " + expiry.toLocaleTimeString();
 }
 
 async function pollStatus() {
   try {
     const sess = await getJSON("/session_status");
     renderActiveSession(sess);
-  } catch (e) { /* ignore transient errors */ }
+  } catch (e) {}
 }
 
 document.getElementById("startBtn").addEventListener("click", async () => {
   const subject = document.getElementById("subject").value;
+  const duration = document.getElementById("duration").value;
   clearAlert(controlAlert);
   if (!subject) {
     showAlert(controlAlert, "Please select a subject first.", "error");
     return;
   }
-  const data = await postJSON("/start_session", { subject });
+  const data = await postJSON("/start_session", { subject, duration });
   if (data.status === "success") {
     renderActiveSession(data.session);
+    showToast("Attendance session started successfully!", "success");
   } else {
     showAlert(controlAlert, data.message, "error");
   }
 });
 
-document.getElementById("endBtn") && document.addEventListener("click", async (e) => {
-  if (e.target && e.target.closest && e.target.closest("#endBtn")) {
-    const data = await postJSON("/end_session", {});
-    if (data.status === "success") {
-      showAlert(controlAlert, data.message, "success");
-      pollStatus();
-    }
+document.getElementById("endBtn").addEventListener("click", async () => {
+  const data = await postJSON("/end_session", {});
+  if (data.status === "success") {
+    showAlert(controlAlert, data.message, "success");
+    showToast("Session ended", "warning");
+    closeModal("projectorModal");
+    pollStatus();
   }
 });
 
-// Poll every 3 seconds for live updating without full refresh
 pollStatus();
 setInterval(pollStatus, 3000);
 
-// Auto logout after {{ timeout_minutes }} minutes of inactivity on this page
 setTimeout(() => {
   window.location.href = "{{ url_for('logout_teacher') }}";
 }, {{ timeout_minutes }} * 60 * 1000);

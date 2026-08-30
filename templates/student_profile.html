@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>{{ analytics.name }} | Student Profile</title>
+<title>{{ analytics.name }} | Student Attendance Profile</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -19,51 +19,63 @@
 
   <main class="main-content">
 
-    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:16px;">
-      <a href="{{ url_for('report_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back to Report</a>
-      <a href="{{ url_for('download_student_pdf', student_id=analytics.student_id) }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf"></i> Print PDF</a>
+    <div style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:18px;">
+      <a href="{{ url_for('report_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-arrow-left"></i> Back to Analytics Hub</a>
+      <a href="{{ url_for('download_student_pdf', student_id=analytics.student_id) }}" class="btn btn-primary btn-sm"><i class="bi bi-file-earmark-pdf-fill"></i> Download Student PDF</a>
     </div>
 
-    <div class="glass-card" style="margin-bottom:20px;">
+    <!-- Student Info Card -->
+    <div class="glass-card" style="margin-bottom:24px;">
       <div class="grid grid-3">
         <div class="stat-card">
-          <div class="label">Student ID</div>
-          <div class="value" style="font-size:1.2rem;">{{ analytics.student_id }}</div>
+          <div class="label">Roll No / Student ID</div>
+          <div class="value" style="font-size:1.4rem;color:var(--accent-glow);">{{ analytics.student_id }}</div>
         </div>
         <div class="stat-card">
           <div class="label">Student Name</div>
-          <div class="value" style="font-size:1.2rem;">{{ analytics.name }}</div>
+          <div class="value" style="font-size:1.3rem;">{{ analytics.name }}</div>
         </div>
         <div class="stat-card {{ 'safe' if analytics.status == 'Safe' else 'warning' if analytics.status == 'Warning' else 'danger' }}">
-          <div class="label">Overall Attendance</div>
+          <div class="label">Overall Attendance Rate</div>
           <div class="value">{{ analytics.overall_percentage }}%</div>
         </div>
       </div>
-      <div style="text-align:center;margin-top:14px;">
-        <span class="badge {{ 'badge-safe' if analytics.status == 'Safe' else 'badge-warning' if analytics.status == 'Warning' else 'badge-danger' }}" style="font-size:.9rem;">
-          {{ analytics.status }} Zone
+
+      <div style="text-align:center;margin-top:18px;">
+        <span class="badge {{ 'badge-safe' if analytics.status == 'Safe' else 'badge-warning' if analytics.status == 'Warning' else 'badge-danger' }}" style="font-size:0.95rem;padding:6px 16px;">
+          <i class="bi bi-shield-check"></i> {{ analytics.status }} Zone
         </span>
         {% if analytics.last_attendance_date %}
-        <span style="color:var(--text-muted);font-size:.85rem;margin-left:10px;">
-          Last Attendance: {{ analytics.last_attendance_date }}
+        <span style="color:var(--text-muted);font-size:.88rem;margin-left:14px;">
+          <i class="bi bi-clock-history"></i> Last Recorded Attendance: <strong>{{ analytics.last_attendance_date }}</strong>
         </span>
         {% endif %}
       </div>
     </div>
 
-    <div class="section-title"><i class="bi bi-graph-up"></i> Subject Wise Attendance</div>
+    <!-- Subject Breakdown Table -->
+    <div class="section-title"><i class="bi bi-journal-check"></i> Subject Performance Breakdown</div>
     <div class="glass-card">
       <div class="table-wrap">
         <table class="data-table">
           <thead>
-            <tr><th>Subject</th><th>Faculty</th><th>Sessions Conducted</th><th>Sessions Attended</th><th>Attendance %</th></tr>
+            <tr><th>Subject</th><th>Faculty</th><th>Sessions Conducted</th><th>Sessions Attended</th><th>Attendance Rate (%)</th></tr>
           </thead>
           <tbody>
             {% for b in analytics.breakdown %}
             <tr>
-              <td>{{ b.subject }}</td><td>{{ b.faculty }}</td>
-              <td>{{ b.sessions_conducted }}</td><td>{{ b.sessions_attended }}</td>
-              <td>{{ b.percentage }}%</td>
+              <td><strong>{{ b.subject }}</strong></td>
+              <td>{{ b.faculty }}</td>
+              <td>{{ b.sessions_conducted }}</td>
+              <td>{{ b.sessions_attended }}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:10px;">
+                  <div class="progress-outer" style="width:120px;height:8px;">
+                    <div class="progress-inner {{ 'progress-green' if b.percentage >= 85 else 'progress-orange' if b.percentage >= 75 else 'progress-red' }}" style="width:{{ b.percentage }}%;"></div>
+                  </div>
+                  <strong style="font-size:0.9rem;">{{ b.percentage }}%</strong>
+                </div>
+              </td>
             </tr>
             {% endfor %}
           </tbody>
@@ -71,29 +83,37 @@
       </div>
     </div>
 
-    <div class="section-title"><i class="bi bi-bar-chart"></i> Attendance Graph</div>
+    <!-- Performance Chart -->
+    <div class="section-title"><i class="bi bi-bar-chart-line-fill"></i> Subject Attendance Graph</div>
     <div class="glass-card">
-      <canvas id="subjectChart" height="220"></canvas>
+      <canvas id="studentSubjectChart" height="220"></canvas>
     </div>
 
-    <div class="section-title"><i class="bi bi-clock-history"></i> Recent Attendance Sessions</div>
+    <!-- Recent Session Logs -->
+    <div class="section-title"><i class="bi bi-clock-history"></i> Recent Session Log History</div>
     <div class="glass-card">
       <div class="table-wrap">
         <table class="data-table">
-          <thead><tr><th>Date</th><th>Session ID</th><th>Subject</th><th>Faculty</th><th>Time</th></tr></thead>
+          <thead>
+            <tr><th>Date</th><th>Session ID</th><th>Subject</th><th>Faculty</th><th>Timestamp</th></tr>
+          </thead>
           <tbody>
             {% for r in analytics.recent_sessions %}
             <tr>
-              <td>{{ r.Date }}</td><td>{{ r.Session_ID }}</td><td>{{ r.Subject }}</td>
-              <td>{{ r.Faculty }}</td><td>{{ r.Time }}</td>
+              <td>{{ r.Date }}</td>
+              <td><span class="badge badge-safe">{{ r.Session_ID }}</span></td>
+              <td><strong>{{ r.Subject }}</strong></td>
+              <td>{{ r.Faculty }}</td>
+              <td>{{ r.Time }}</td>
             </tr>
             {% else %}
-            <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No attendance records yet</td></tr>
+            <tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No attendance records found for this student.</td></tr>
             {% endfor %}
           </tbody>
         </table>
       </div>
     </div>
+
   </main>
 
   <footer class="app-footer">{{ footer }}</footer>
@@ -103,21 +123,21 @@
 const labels = {{ analytics.breakdown | map(attribute='subject') | list | tojson }};
 const values = {{ analytics.breakdown | map(attribute='percentage') | list | tojson }};
 
-new Chart(document.getElementById("subjectChart"), {
+new Chart(document.getElementById("studentSubjectChart"), {
   type: "bar",
   data: {
     labels: labels,
     datasets: [{
-      label: "Attendance %",
+      label: "Attendance Rate (%)",
       data: values,
-      backgroundColor: values.map(v => v >= 85 ? "#2ecc71" : v >= 75 ? "#f5a623" : "#ff5c6c"),
+      backgroundColor: values.map(v => v >= 85 ? "#10b981" : v >= 75 ? "#f59e0b" : "#ef4444"),
     }]
   },
   options: {
     plugins: { legend: { display: false } },
     scales: {
-      x: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" } },
-      y: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 }
+      x: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,.08)" } },
+      y: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 }
     }
   }
 });

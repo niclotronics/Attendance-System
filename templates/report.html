@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Report Dashboard | {{ college }}</title>
+<title>Report & Analytics Hub | {{ college }}</title>
 <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
 <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
@@ -19,59 +19,62 @@
 
   <main class="main-content">
 
-    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:16px;flex-wrap:wrap;">
-      <a href="{{ url_for('generate_page') }}" class="btn btn-outline btn-sm"><i class="bi bi-broadcast"></i> Generate Session</a>
-      <a href="{{ url_for('download_csv') }}" class="btn btn-outline btn-sm"><i class="bi bi-filetype-csv"></i> Download CSV</a>
-      <button class="btn btn-outline btn-sm" id="downloadPdfBtn"><i class="bi bi-file-earmark-pdf"></i> Download PDF</button>
-      <button class="btn btn-outline btn-sm" id="printBtn"><i class="bi bi-printer"></i> Print Report</button>
-      <button class="btn btn-danger btn-sm" id="openResetModal"><i class="bi bi-eraser"></i> Reset Attendance</button>
+    <!-- Action Toolbar -->
+    <div style="display:flex;justify-content:flex-end;gap:10px;margin-bottom:18px;flex-wrap:wrap;">
+      <a href="{{ url_for('generate_page') }}" class="btn btn-primary btn-sm"><i class="bi bi-broadcast"></i> Generate Live Session</a>
+      <button class="btn btn-outline btn-sm" onclick="openModal('rosterModal'); loadRosterTable();"><i class="bi bi-people-fill"></i> Manage Roster</button>
+      <button class="btn btn-outline btn-sm" onclick="openModal('manualMarkModal');"><i class="bi bi-pencil-square"></i> Manual Override</button>
+      <a href="{{ url_for('download_csv') }}" class="btn btn-outline btn-sm"><i class="bi bi-filetype-csv"></i> Export CSV</a>
+      <button class="btn btn-outline btn-sm" id="downloadPdfBtn"><i class="bi bi-file-earmark-pdf"></i> Export PDF</button>
+      <button class="btn btn-outline btn-sm" id="printBtn"><i class="bi bi-printer"></i> Print</button>
+      <button class="btn btn-danger btn-sm" id="openResetModal"><i class="bi bi-eraser-fill"></i> Reset Data</button>
       <a href="{{ url_for('logout_teacher') }}" class="btn btn-danger btn-sm"><i class="bi bi-box-arrow-right"></i> Logout</a>
     </div>
 
     <!-- ============ TODAY'S SUMMARY ============ -->
-    <div class="section-title"><i class="bi bi-calendar-check"></i> Today's Summary</div>
+    <div class="section-title"><i class="bi bi-calendar-check-fill"></i> Today's Summary</div>
     <div class="grid grid-6" id="todaySummaryGrid"></div>
 
-    <!-- ============ TOP LEVEL STATS ============ -->
-    <div class="section-title"><i class="bi bi-clipboard-data"></i> Overview</div>
+    <!-- ============ OVERVIEW STATS ============ -->
+    <div class="section-title"><i class="bi bi-clipboard-data-fill"></i> System Overview</div>
     <div class="grid grid-3">
       <div class="stat-card">
-        <div class="label">Total Attendance Records</div>
+        <div class="label">Total Attendance Entries</div>
         <div class="value" id="totalRecords">0</div>
       </div>
-      <div class="stat-card">
-        <div class="label">Total Students Present (Unique)</div>
+      <div class="stat-card safe">
+        <div class="label">Unique Students Present</div>
         <div class="value" id="totalPresent">0</div>
       </div>
       <div class="stat-card">
-        <div class="label">Report Generated</div>
+        <div class="label">Report Timestamp</div>
         <div class="value" style="font-size:1rem;" id="generatedAt">--</div>
       </div>
     </div>
 
     <!-- ============ CHARTS ============ -->
-    <div class="section-title"><i class="bi bi-pie-chart"></i> Charts</div>
+    <div class="section-title"><i class="bi bi-pie-chart-fill"></i> Visual Analytics & Distribution</div>
     <div class="grid grid-2">
       <div class="glass-card">
-        <h3 style="margin-top:0;">Overall Attendance Distribution</h3>
+        <h3 style="margin-top:0;">Attendance Distribution</h3>
         <canvas id="pieChart" height="220"></canvas>
       </div>
       <div class="glass-card">
-        <h3 style="margin-top:0;">Subject Wise Attendance</h3>
+        <h3 style="margin-top:0;">Subject-Wise Average (%)</h3>
         <canvas id="barChart" height="220"></canvas>
       </div>
     </div>
     <div class="glass-card" style="margin-top:20px;">
-      <h3 style="margin-top:0;">Student Wise Attendance</h3>
+      <h3 style="margin-top:0;">Student-Wise Attendance (%)</h3>
       <canvas id="hbarChart" height="260"></canvas>
     </div>
 
     <!-- ============ SUBJECT ANALYTICS ============ -->
-    <div class="section-title"><i class="bi bi-journal-bookmark"></i> Subject Analytics</div>
+    <div class="section-title"><i class="bi bi-journal-bookmark-fill"></i> Subject Breakdown</div>
     <div class="grid grid-3" id="subjectCards"></div>
 
     <!-- ============ DEFAULTER DASHBOARD ============ -->
-    <div class="section-title"><i class="bi bi-exclamation-triangle"></i> Defaulter Dashboard</div>
+    <div class="section-title"><i class="bi bi-exclamation-triangle-fill"></i> Defaulter & Risk Dashboard</div>
     <div class="grid grid-3">
       <div class="stat-card safe">
         <div class="label">Safe Students (&ge;85%)</div>
@@ -86,43 +89,53 @@
         <div class="value" id="defaulterCount">0</div>
       </div>
     </div>
+
     <div class="glass-card" style="margin-top:16px;">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;">
+        <h4 style="margin:0;">Defaulter Roster List</h4>
+        <div class="nav-tabs" style="margin-bottom:0;padding:2px;">
+          <button class="nav-tab active btn-sm" onclick="filterDefaulters('ALL', this)">All</button>
+          <button class="nav-tab btn-sm" onclick="filterDefaulters('Defaulter', this)">Defaulters (<75%)</button>
+          <button class="nav-tab btn-sm" onclick="filterDefaulters('Warning', this)">Warning (75-85%)</button>
+          <button class="nav-tab btn-sm" onclick="filterDefaulters('Safe', this)">Safe (>=85%)</button>
+        </div>
+      </div>
       <div class="table-wrap">
         <table class="data-table" id="defaulterTable">
           <thead>
-            <tr><th>Student ID</th><th>Student Name</th><th>Subject</th><th>Attendance %</th><th>Status</th></tr>
+            <tr><th>Student ID</th><th>Student Name</th><th>Subject</th><th>Attendance %</th><th>Status Zone</th></tr>
           </thead>
           <tbody></tbody>
         </table>
       </div>
     </div>
 
-    <!-- ============ STUDENT ANALYTICS SEARCH ============ -->
-    <div class="section-title"><i class="bi bi-person-lines-fill"></i> Student Attendance Analytics</div>
+    <!-- ============ STUDENT PROFILE SEARCH ============ -->
+    <div class="section-title"><i class="bi bi-person-lines-fill"></i> Individual Student Analytics</div>
     <div class="glass-card">
       <div class="form-group">
-        <label>Search by Student ID or Name</label>
+        <label><i class="bi bi-search"></i> Search Enrolled Student by Roll No or Name</label>
         <input type="text" id="studentSearchInput" class="form-control" placeholder="Type student ID or name...">
       </div>
       <div id="studentSearchResults" style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;"></div>
       <div id="studentAnalyticsResult"></div>
     </div>
 
-    <!-- ============ ATTENDANCE TABLE + FILTERS ============ -->
-    <div class="section-title"><i class="bi bi-table"></i> Attendance Records</div>
+    <!-- ============ ATTENDANCE RECORDS TABLE ============ -->
+    <div class="section-title"><i class="bi bi-table"></i> Master Attendance Records</div>
     <div class="glass-card">
       <div class="filter-bar">
-        <input type="text" id="f_student_id" class="form-control" placeholder="Search Student ID">
-        <input type="text" id="f_student_name" class="form-control" placeholder="Search Student Name">
+        <input type="text" id="f_student_id" class="form-control" placeholder="Roll No / ID">
+        <input type="text" id="f_student_name" class="form-control" placeholder="Student Name">
         <input type="date" id="f_date" class="form-control">
         <select id="f_subject" class="form-control">
           <option value="">All Subjects</option>
           {% for s in subjects %}<option value="{{ s }}">{{ s }}</option>{% endfor %}
         </select>
-        <input type="text" id="f_faculty" class="form-control" placeholder="Search Faculty">
-        <input type="text" id="f_session_id" class="form-control" placeholder="Search Session ID">
-        <button class="btn btn-primary btn-sm" id="applyFilters"><i class="bi bi-funnel"></i> Filter</button>
-        <button class="btn btn-outline btn-sm" id="clearFilters"><i class="bi bi-x-circle"></i> Clear</button>
+        <input type="text" id="f_faculty" class="form-control" placeholder="Faculty Name">
+        <input type="text" id="f_session_id" class="form-control" placeholder="Session ID">
+        <button class="btn btn-primary btn-sm" id="applyFilters"><i class="bi bi-funnel-fill"></i> Filter</button>
+        <button class="btn btn-outline btn-sm" id="clearFilters"><i class="bi bi-x-circle-fill"></i> Clear</button>
       </div>
 
       <div class="table-wrap">
@@ -137,296 +150,410 @@
         </table>
       </div>
     </div>
+
   </main>
 
   <footer class="app-footer">{{ footer }}</footer>
 </div>
 
-<!-- ============ RESET ATTENDANCE MODAL ============ -->
+<!-- ============ MODAL: ROSTER MANAGER ============ -->
+<div class="modal-overlay" id="rosterModal">
+  <div class="modal-box" style="max-width:650px;">
+    <div class="modal-header">
+      <h3><i class="bi bi-people-fill"></i> Student Roster Manager</h3>
+      <button class="modal-close" onclick="closeModal('rosterModal')">&times;</button>
+    </div>
+    
+    <div id="rosterAlert"></div>
+
+    <form id="addStudentForm" style="display:flex;gap:10px;margin-bottom:16px;">
+      <input type="text" id="new_sid" class="form-control" placeholder="Student ID (e.g. 2503150)" required style="flex:1;">
+      <input type="text" id="new_name" class="form-control" placeholder="Full Name" required style="flex:2;">
+      <button type="submit" class="btn btn-primary btn-sm"><i class="bi bi-person-plus-fill"></i> Add</button>
+    </form>
+
+    <div class="table-wrap" style="max-height:300px;overflow-y:auto;">
+      <table class="data-table" id="rosterTable">
+        <thead>
+          <tr><th>Student ID</th><th>Name</th><th>Action</th></tr>
+        </thead>
+        <tbody></tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- ============ MODAL: MANUAL MARK OVERRIDE ============ -->
+<div class="modal-overlay" id="manualMarkModal">
+  <div class="modal-box">
+    <div class="modal-header">
+      <h3><i class="bi bi-pencil-square"></i> Manual Attendance Override</h3>
+      <button class="modal-close" onclick="closeModal('manualMarkModal')">&times;</button>
+    </div>
+
+    <div id="manualAlert"></div>
+
+    <form id="manualForm">
+      <div class="form-group">
+        <label>Select Student</label>
+        <select id="manual_sid" class="form-control" required>
+          <option value="">-- Choose Student --</option>
+          {% for sid, name in students.items() %}
+          <option value="{{ sid }}">{{ sid }} - {{ name }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Subject</label>
+        <select id="manual_subject" class="form-control" required>
+          {% for s in subjects %}
+          <option value="{{ s }}">{{ s }} - {{ faculty_map[s] }}</option>
+          {% endfor %}
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Session ID (Optional)</label>
+        <input type="text" id="manual_session" class="form-control" placeholder="e.g. PYT001">
+      </div>
+
+      <div class="form-group">
+        <label>Date</label>
+        <input type="date" id="manual_date" class="form-control" required>
+      </div>
+
+      <button type="submit" class="btn btn-primary btn-block"><i class="bi bi-check-circle-fill"></i> Record Attendance</button>
+    </form>
+  </div>
+</div>
+
+<!-- ============ MODAL: CONFIRM RESET ============ -->
 <div class="modal-overlay" id="resetModal">
   <div class="modal-box">
-    <h3><i class="bi bi-exclamation-octagon"></i> Confirm Reset</h3>
-    <p style="color:var(--text-muted);font-size:.88rem;">
-      This will permanently delete ALL attendance records. Student list will NOT be affected.
-      Please re-enter the Teacher Security Key to confirm.
+    <div class="modal-header">
+      <h3 style="color:var(--danger);"><i class="bi bi-exclamation-octagon-fill"></i> Confirm Reset</h3>
+      <button class="modal-close" onclick="closeModal('resetModal')">&times;</button>
+    </div>
+    <p style="color:var(--text-muted);font-size:0.9rem;">
+      This action will permanently wipe all attendance log records. The student roster list will NOT be touched.
     </p>
     <div id="resetAlert"></div>
     <div class="form-group">
-      <label>Teacher Security Key</label>
-      <input type="password" id="resetKeyInput" class="form-control" placeholder="Security Key">
+      <label>Enter Teacher Security Key to Confirm</label>
+      <input type="password" id="reset_key" class="form-control" placeholder="Security Key" required>
     </div>
-    <div style="display:flex;gap:10px;">
-      <button class="btn btn-danger btn-block" id="confirmResetBtn"><i class="bi bi-trash3"></i> Confirm Reset</button>
-      <button class="btn btn-outline btn-block" id="cancelResetBtn">Cancel</button>
+    <div style="display:flex;justify-content:flex-end;gap:10px;">
+      <button class="btn btn-outline btn-sm" onclick="closeModal('resetModal')">Cancel</button>
+      <button class="btn btn-danger btn-sm" id="confirmResetBtn"><i class="bi bi-trash-fill"></i> Reset All Data</button>
     </div>
   </div>
 </div>
 
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 <script>
-let pieChartInstance, barChartInstance, hbarChartInstance;
+let defaulterDataRaw = [];
+let chartPie = null, chartBar = null, chartHbar = null;
 
-function buildFilterQuery() {
-  const params = new URLSearchParams();
-  const map = {
-    student_id: "f_student_id", student_name: "f_student_name", date: "f_date",
-    subject: "f_subject", faculty: "f_faculty", session_id: "f_session_id",
-  };
-  for (const [key, id] of Object.entries(map)) {
-    const val = document.getElementById(id).value.trim();
-    if (val) params.append(key, val);
+async function fetchReportData() {
+  const params = new URLSearchParams({
+    student_id: document.getElementById("f_student_id").value,
+    student_name: document.getElementById("f_student_name").value,
+    date: document.getElementById("f_date").value,
+    subject: document.getElementById("f_subject").value,
+    faculty: document.getElementById("f_faculty").value,
+    session_id: document.getElementById("f_session_id").value,
+  });
+
+  try {
+    const data = await getJSON("/report_data?" + params.toString());
+    renderOverview(data);
+    renderCharts(data);
+    renderSubjectCards(data.subject_analytics);
+    renderDefaulterDashboard(data.defaulter_dashboard);
+    renderTodaySummary(data.today_summary);
+    renderTable(data.rows);
+  } catch (err) {
+    showToast("Failed to fetch report data", "error");
   }
-  return params.toString();
 }
 
-async function loadReportData() {
-  const query = buildFilterQuery();
-  const data = await getJSON("/report_data?" + query);
-
+function renderOverview(data) {
   document.getElementById("totalRecords").innerText = data.total_records;
   document.getElementById("totalPresent").innerText = data.total_students_present;
   document.getElementById("generatedAt").innerText = new Date().toLocaleString();
-
-  renderAttendanceTable(data.rows);
-  renderSubjectCards(data.subject_analytics);
-  renderDefaulterDashboard(data.defaulter_dashboard);
-  renderTodaySummary(data.today_summary);
-  renderCharts(data.subject_analytics, data.defaulter_dashboard);
 }
 
-function renderAttendanceTable(rows) {
-  const tbody = document.querySelector("#attendanceTable tbody");
-  tbody.innerHTML = "";
-  if (rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No records found</td></tr>';
-    return;
-  }
-  rows.forEach(r => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><a class="link-id" onclick="openStudentProfile('${r.Student_ID}')">${r.Student_ID}</a></td>
-      <td>${r.Name}</td><td>${r.Date}</td><td>${r.Session_ID}</td>
-      <td>${r.Subject}</td><td>${r.Faculty}</td><td>${r.Time}</td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-function renderSubjectCards(subjects) {
-  const wrap = document.getElementById("subjectCards");
-  wrap.innerHTML = "";
-  subjects.forEach(s => {
-    const colorClass = progressColorClass(s.avg_percentage);
-    const card = document.createElement("div");
-    card.className = "glass-card subject-card";
-    card.innerHTML = `
-      <div class="subject-code">${s.subject}</div>
-      <div class="faculty-name">${s.faculty}</div>
-      <div style="display:flex;justify-content:space-between;font-size:.82rem;color:var(--text-muted);">
-        <span>Sessions: <b style="color:var(--text-main);">${s.total_sessions}</b></span>
-        <span>Records: <b style="color:var(--text-main);">${s.total_records}</b></span>
-      </div>
-      <div class="progress-outer"><div class="progress-inner ${colorClass}" style="width:${s.avg_percentage}%;"></div></div>
-      <div style="text-align:right;margin-top:4px;font-weight:600;">${s.avg_percentage}%</div>
-    `;
-    wrap.appendChild(card);
-  });
-}
-
-function renderDefaulterDashboard(dd) {
-  document.getElementById("safeCount").innerText = dd.safe_count;
-  document.getElementById("warningCount").innerText = dd.warning_count;
-  document.getElementById("defaulterCount").innerText = dd.defaulter_count;
-
-  const tbody = document.querySelector("#defaulterTable tbody");
-  tbody.innerHTML = "";
-  if (dd.table_rows.length === 0) {
-    tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No data yet</td></tr>';
-    return;
-  }
-  dd.table_rows.forEach(row => {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td><a class="link-id" onclick="openStudentProfile('${row.student_id}')">${row.student_id}</a></td>
-      <td>${row.name}</td><td>${row.subject}</td><td>${row.percentage}%</td>
-      <td><span class="badge ${statusBadgeClass(row.status)}">${row.status}</span></td>`;
-    tbody.appendChild(tr);
-  });
-}
-
-function renderTodaySummary(ts) {
+function renderTodaySummary(today) {
   const grid = document.getElementById("todaySummaryGrid");
   grid.innerHTML = `
-    <div class="stat-card"><div class="label">Date</div><div class="value" style="font-size:1.1rem;">${ts.today_date}</div></div>
-    <div class="stat-card"><div class="label">Sessions Today</div><div class="value">${ts.sessions_conducted_today}</div></div>
-    <div class="stat-card"><div class="label">Attendance Entries</div><div class="value">${ts.attendance_entries_today}</div></div>
-    <div class="stat-card"><div class="label">Avg Attendance</div><div class="value">${ts.average_attendance_today}%</div></div>
-    <div class="stat-card safe"><div class="label">Best Subject</div><div class="value" style="font-size:1.3rem;">${ts.best_subject}</div></div>
-    <div class="stat-card danger"><div class="label">Lowest Subject</div><div class="value" style="font-size:1.3rem;">${ts.lowest_subject}</div></div>
+    <div class="stat-card"><div class="label">Date</div><div class="value" style="font-size:1rem;">${today.today_date}</div></div>
+    <div class="stat-card"><div class="label">Sessions Today</div><div class="value">${today.sessions_conducted_today}</div></div>
+    <div class="stat-card"><div class="label">Entries Today</div><div class="value">${today.attendance_entries_today}</div></div>
+    <div class="stat-card safe"><div class="label">Avg Rate Today</div><div class="value">${today.average_attendance_today}%</div></div>
+    <div class="stat-card"><div class="label">Top Subject</div><div class="value" style="font-size:1.1rem;color:var(--success);">${today.best_subject}</div></div>
+    <div class="stat-card"><div class="label">Lowest Subject</div><div class="value" style="font-size:1.1rem;color:var(--danger);">${today.lowest_subject}</div></div>
   `;
 }
 
-function renderCharts(subjects, defaulterDash) {
-  const ctxPie = document.getElementById("pieChart");
-  const ctxBar = document.getElementById("barChart");
-  const ctxHbar = document.getElementById("hbarChart");
+function renderCharts(data) {
+  const sa = data.subject_analytics;
+  const labels = sa.map(s => s.subject);
+  const records = sa.map(s => s.total_records);
+  const pcts = sa.map(s => s.avg_percentage);
 
-  const chartColors = ["#3d8bfd", "#6ee7f5", "#2ecc71", "#f5a623", "#ff5c6c", "#9b59b6"];
-
-  if (pieChartInstance) pieChartInstance.destroy();
-  pieChartInstance = new Chart(ctxPie, {
+  // Pie Chart
+  if (chartPie) chartPie.destroy();
+  chartPie = new Chart(document.getElementById("pieChart"), {
     type: "pie",
     data: {
-      labels: ["Safe", "Warning", "Defaulter"],
+      labels: labels,
       datasets: [{
-        data: [defaulterDash.safe_count, defaulterDash.warning_count, defaulterDash.defaulter_count],
-        backgroundColor: ["#2ecc71", "#f5a623", "#ff5c6c"],
+        data: records,
+        backgroundColor: ["#00adb5", "#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ec4899"],
       }]
     },
-    options: { plugins: { legend: { labels: { color: "#eaf1ff" } } } }
+    options: { plugins: { legend: { labels: { color: "#f8fafc" } } } }
   });
 
-  if (barChartInstance) barChartInstance.destroy();
-  barChartInstance = new Chart(ctxBar, {
+  // Bar Chart
+  if (chartBar) chartBar.destroy();
+  chartBar = new Chart(document.getElementById("barChart"), {
     type: "bar",
     data: {
-      labels: subjects.map(s => s.subject),
+      labels: labels,
       datasets: [{
         label: "Avg Attendance %",
-        data: subjects.map(s => s.avg_percentage),
-        backgroundColor: chartColors,
+        data: pcts,
+        backgroundColor: pcts.map(v => v >= 85 ? "#10b981" : v >= 75 ? "#f59e0b" : "#ef4444"),
       }]
     },
     options: {
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" } },
-        y: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 }
+        x: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" } },
+        y: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" }, beginAtZero: true, max: 100 }
       }
     }
   });
 
-  const studentRows = defaulterDash.student_summary.slice(0, 15);
-  if (hbarChartInstance) hbarChartInstance.destroy();
-  hbarChartInstance = new Chart(ctxHbar, {
+  // Horizontal Bar Chart
+  const topStudents = data.defaulter_dashboard.student_summary.slice(0, 15);
+  if (chartHbar) chartHbar.destroy();
+  chartHbar = new Chart(document.getElementById("hbarChart"), {
     type: "bar",
     data: {
-      labels: studentRows.map(s => s.student_id),
+      labels: topStudents.map(s => s.student_id + " - " + s.name),
       datasets: [{
-        label: "Overall Attendance %",
-        data: studentRows.map(s => s.overall_percentage),
-        backgroundColor: "#6ee7f5",
+        label: "Overall %",
+        data: topStudents.map(s => s.overall_percentage),
+        backgroundColor: topStudents.map(s => s.overall_percentage >= 85 ? "#10b981" : s.overall_percentage >= 75 ? "#f59e0b" : "#ef4444"),
       }]
     },
     options: {
-      indexAxis: "y",
+      indexAxis: 'y',
       plugins: { legend: { display: false } },
       scales: {
-        x: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" }, beginAtZero: true, max: 100 },
-        y: { ticks: { color: "#eaf1ff" }, grid: { color: "rgba(255,255,255,.08)" } }
+        x: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" }, max: 100 },
+        y: { ticks: { color: "#f8fafc", font: { size: 11 } }, grid: { color: "rgba(255,255,255,0.08)" } }
       }
     }
   });
 }
 
-function openStudentProfile(studentId) {
-  window.open("/student_profile/" + encodeURIComponent(studentId), "_blank");
-}
-
-// ---- Filters ----
-document.getElementById("applyFilters").addEventListener("click", loadReportData);
-document.getElementById("clearFilters").addEventListener("click", () => {
-  ["f_student_id","f_student_name","f_date","f_subject","f_faculty","f_session_id"].forEach(id => {
-    document.getElementById(id).value = "";
-  });
-  loadReportData();
-});
-
-// ---- Student search ----
-const studentSearchInput = document.getElementById("studentSearchInput");
-const studentSearchResults = document.getElementById("studentSearchResults");
-const studentAnalyticsResult = document.getElementById("studentAnalyticsResult");
-
-let searchTimeout;
-studentSearchInput.addEventListener("input", () => {
-  clearTimeout(searchTimeout);
-  const q = studentSearchInput.value.trim();
-  if (!q) { studentSearchResults.innerHTML = ""; return; }
-  searchTimeout = setTimeout(async () => {
-    const data = await getJSON("/student_search?q=" + encodeURIComponent(q));
-    studentSearchResults.innerHTML = "";
-    data.matches.forEach(m => {
-      const chip = document.createElement("button");
-      chip.className = "btn btn-outline btn-sm";
-      chip.innerText = `${m.student_id} - ${m.name}`;
-      chip.onclick = () => loadStudentAnalytics(m.student_id);
-      studentSearchResults.appendChild(chip);
-    });
-  }, 250);
-});
-
-async function loadStudentAnalytics(studentId) {
-  const data = await getJSON("/student_analytics/" + encodeURIComponent(studentId));
-  if (data.status !== "success") {
-    studentAnalyticsResult.innerHTML = `<div class="alert alert-error">${data.message}</div>`;
-    return;
-  }
-  const a = data.data;
-  let rowsHtml = a.breakdown.map(b => `
-    <tr>
-      <td>${b.subject}</td><td>${b.faculty}</td>
-      <td>${b.sessions_conducted}</td><td>${b.sessions_attended}</td>
-      <td>${b.percentage}%</td>
-    </tr>`).join("");
-
-  studentAnalyticsResult.innerHTML = `
-    <div class="grid grid-2" style="margin-bottom:14px;">
-      <div class="stat-card"><div class="label">Student</div><div class="value" style="font-size:1.1rem;">${a.name} (${a.student_id})</div></div>
-      <div class="stat-card ${a.status === 'Safe' ? 'safe' : a.status === 'Warning' ? 'warning' : 'danger'}">
-        <div class="label">Overall Attendance</div><div class="value">${a.overall_percentage}%</div>
+function renderSubjectCards(sa) {
+  const container = document.getElementById("subjectCards");
+  container.innerHTML = sa.map(s => `
+    <div class="stat-card">
+      <div style="display:flex;justify-content:space-between;align-items:center;">
+        <span class="label">${s.subject}</span>
+        <span class="badge ${s.avg_percentage >= 85 ? 'badge-safe' : s.avg_percentage >= 75 ? 'badge-warning' : 'badge-danger'}">${s.avg_percentage}% Avg</span>
+      </div>
+      <div class="value" style="font-size:1.2rem;margin-top:8px;">${s.faculty}</div>
+      <div style="font-size:0.82rem;color:var(--text-muted);margin-top:6px;">
+        Sessions Conducted: <strong>${s.total_sessions}</strong> | Entries: <strong>${s.total_records}</strong>
       </div>
     </div>
-    <div class="table-wrap">
-      <table class="data-table">
-        <thead><tr><th>Subject</th><th>Faculty</th><th>Sessions Conducted</th><th>Sessions Attended</th><th>Attendance %</th></tr></thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-    </div>
-    <div style="text-align:right;margin-top:10px;">
-      <a href="/student_profile/${a.student_id}" target="_blank" class="btn btn-outline btn-sm"><i class="bi bi-person-badge"></i> Open Full Profile</a>
-    </div>
-  `;
+  `).join("");
 }
 
-// ---- Reset Attendance ----
-document.getElementById("openResetModal").addEventListener("click", () => openModal("resetModal"));
-document.getElementById("cancelResetBtn").addEventListener("click", () => closeModal("resetModal"));
-document.getElementById("confirmResetBtn").addEventListener("click", async () => {
-  const key = document.getElementById("resetKeyInput").value.trim();
-  const resetAlert = document.getElementById("resetAlert");
-  const data = await postJSON("/reset_attendance", { security_key: key });
-  if (data.status === "success") {
-    showAlert(resetAlert, data.message, "success");
-    setTimeout(() => {
-      closeModal("resetModal");
-      document.getElementById("resetKeyInput").value = "";
-      clearAlert(resetAlert);
-      loadReportData();
-    }, 1200);
+function renderDefaulterDashboard(d) {
+  document.getElementById("safeCount").innerText = d.safe_count;
+  document.getElementById("warningCount").innerText = d.warning_count;
+  document.getElementById("defaulterCount").innerText = d.defaulter_count;
+  defaulterDataRaw = d.table_rows;
+  filterDefaulters('ALL');
+}
+
+function filterDefaulters(zone, btnEl) {
+  if (btnEl) {
+    btnEl.parentNode.querySelectorAll(".nav-tab").forEach(b => b.classList.remove("active"));
+    btnEl.classList.add("active");
+  }
+
+  let filtered = defaulterDataRaw;
+  if (zone !== 'ALL') {
+    filtered = defaulterDataRaw.filter(r => r.status === zone);
+  }
+
+  const tbody = document.querySelector("#defaulterTable tbody");
+  tbody.innerHTML = filtered.map(r => `
+    <tr>
+      <td><strong>${r.student_id}</strong></td>
+      <td><a href="/student_profile/${r.student_id}" style="color:var(--accent-glow);text-decoration:none;">${r.name}</a></td>
+      <td>${r.subject}</td>
+      <td><strong>${r.percentage}%</strong></td>
+      <td><span class="badge ${r.status === 'Safe' ? 'badge-safe' : r.status === 'Warning' ? 'badge-warning' : 'badge-danger'}">${r.status}</span></td>
+    </tr>
+  `).join("") || `<tr><td colspan="5" style="text-align:center;color:var(--text-muted);">No records found for this filter</td></tr>`;
+}
+
+function renderTable(rows) {
+  const tbody = document.querySelector("#attendanceTable tbody");
+  tbody.innerHTML = rows.map(r => `
+    <tr>
+      <td><strong>${r.Student_ID}</strong></td>
+      <td>${r.Name}</td>
+      <td>${r.Date}</td>
+      <td><span class="badge badge-safe">${r.Session_ID}</span></td>
+      <td>${r.Subject}</td>
+      <td>${r.Faculty}</td>
+      <td>${r.Time}</td>
+    </tr>
+  `).join("") || `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">No attendance records match the selected filters.</td></tr>`;
+}
+
+// Filters & Event Listeners
+document.getElementById("applyFilters").addEventListener("click", fetchReportData);
+document.getElementById("clearFilters").addEventListener("click", () => {
+  ["f_student_id", "f_student_name", "f_date", "f_subject", "f_faculty", "f_session_id"].forEach(id => {
+    document.getElementById(id).value = "";
+  });
+  fetchReportData();
+});
+
+// Student Search Auto-complete
+const searchInput = document.getElementById("studentSearchInput");
+const searchResults = document.getElementById("studentSearchResults");
+
+searchInput.addEventListener("input", async () => {
+  const q = searchInput.value.trim();
+  if (q.length < 2) {
+    searchResults.innerHTML = "";
+    return;
+  }
+  const data = await getJSON(`/student_search?q=${encodeURIComponent(q)}`);
+  searchResults.innerHTML = data.matches.map(m => `
+    <button class="btn btn-outline btn-sm" onclick="loadStudentProfileCard('${m.student_id}')">
+      ${m.student_id} - ${m.name}
+    </button>
+  `).join("");
+});
+
+async function loadStudentProfileCard(sid) {
+  const res = await getJSON(`/student_analytics/${sid}`);
+  if (res.status === "success") {
+    window.location.href = `/student_profile/${sid}`;
+  }
+}
+
+// Student Roster Manager API logic
+async function loadRosterTable() {
+  const res = await getJSON("/api/students");
+  if (res.status === "success") {
+    const tbody = document.querySelector("#rosterTable tbody");
+    tbody.innerHTML = res.students.map(s => `
+      <tr>
+        <td><strong>${s.student_id}</strong></td>
+        <td>${s.name}</td>
+        <td>
+          <button class="btn btn-danger btn-sm" onclick="deleteStudent('${s.student_id}')"><i class="bi bi-trash"></i></button>
+        </td>
+      </tr>
+    `).join("");
+  }
+}
+
+document.getElementById("addStudentForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const student_id = document.getElementById("new_sid").value.trim();
+  const name = document.getElementById("new_name").value.trim();
+  const alertEl = document.getElementById("rosterAlert");
+
+  const res = await postJSON("/api/add_student", { student_id, name });
+  if (res.status === "success") {
+    showAlert(alertEl, res.message, "success");
+    showToast(res.message, "success");
+    document.getElementById("addStudentForm").reset();
+    loadRosterTable();
   } else {
-    showAlert(resetAlert, data.message, "error");
+    showAlert(alertEl, res.message, "error");
   }
 });
 
-// ---- Downloads / Print ----
-document.getElementById("downloadPdfBtn").addEventListener("click", () => {
-  const query = buildFilterQuery();
-  window.open("/download_pdf?" + query, "_blank");
-});
-document.getElementById("printBtn").addEventListener("click", () => window.print());
+async function deleteStudent(sid) {
+  if (!confirm(`Are you sure you want to delete student ${sid}?`)) return;
+  const res = await postJSON("/api/delete_student", { student_id: sid });
+  if (res.status === "success") {
+    showToast(res.message, "warning");
+    loadRosterTable();
+  }
+}
 
-// Initial + periodic refresh (keeps table & live counts fresh without full page reload)
-loadReportData();
-setInterval(loadReportData, 15000);
+// Manual Override Logic
+document.getElementById("manualForm").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const alertEl = document.getElementById("manualAlert");
+  const payload = {
+    student_id: document.getElementById("manual_sid").value,
+    subject: document.getElementById("manual_subject").value,
+    session_id: document.getElementById("manual_session").value,
+    date: document.getElementById("manual_date").value,
+  };
+
+  const res = await postJSON("/manual_mark", payload);
+  if (res.status === "success") {
+    showAlert(alertEl, res.message, "success");
+    showToast(res.message, "success");
+    fetchReportData();
+    setTimeout(() => closeModal("manualMarkModal"), 1200);
+  } else {
+    showAlert(alertEl, res.message, "error");
+  }
+});
+
+// Reset Logic
+document.getElementById("openResetModal").addEventListener("click", () => openModal("resetModal"));
+document.getElementById("confirmResetBtn").addEventListener("click", async () => {
+  const key = document.getElementById("reset_key").value;
+  const alertEl = document.getElementById("resetAlert");
+  const res = await postJSON("/reset_attendance", { security_key: key });
+
+  if (res.status === "success") {
+    showAlert(alertEl, res.message, "success");
+    showToast("All attendance data has been reset", "danger");
+    setTimeout(() => {
+      closeModal("resetModal");
+      fetchReportData();
+    }, 1000);
+  } else {
+    showAlert(alertEl, res.message, "error");
+  }
+});
+
+// Print & PDF Export buttons
+document.getElementById("printBtn").addEventListener("click", () => window.print());
+document.getElementById("downloadPdfBtn").addEventListener("click", () => {
+  const subj = document.getElementById("f_subject").value;
+  const date = document.getElementById("f_date").value;
+  window.location.href = `/download_pdf?subject=${encodeURIComponent(subj)}&date=${encodeURIComponent(date)}`;
+});
+
+// Set default manual date to today
+document.getElementById("manual_date").value = new Date().toISOString().split('T')[0];
+
+// Initial Load
+fetchReportData();
 </script>
 </body>
 </html>

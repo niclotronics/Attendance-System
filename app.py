@@ -2,11 +2,11 @@
 ==================================================================
  Government Polytechnic Pune
  Electronics and Telecommunication Department
- Smart Attendance System for L2
+ Smart Attendance System v2.0 for L2
 ==================================================================
  Author  : Nikhil Wani
- Stack   : Flask + HTML + CSS + JavaScript + CSV
- Storage : Plain CSV files (no database used, as required)
+ Stack   : Flask + HTML + Vanilla CSS + JavaScript + CSV
+ Storage : Plain CSV files (No DB required, optimized file I/O)
 ==================================================================
 """
 
@@ -16,6 +16,7 @@ import json
 import os
 import random
 import string
+import threading
 from datetime import datetime, timedelta
 from functools import wraps
 
@@ -43,19 +44,11 @@ STUDENTS_CSV = os.path.join(BASE_DIR, "students.csv")
 ATTENDANCE_CSV = os.path.join(BASE_DIR, "attendance.csv")
 
 app = Flask(__name__)
-# Secret key is only used to sign the Flask session cookie (teacher login
-# state + anti-proxy device cookie). Not used for any DB / crypto purpose.
 app.secret_key = "gpp-l2-smart-attendance-secret-key-2026"
 
-# How long a teacher stays logged in before automatic logout
 TEACHER_SESSION_TIMEOUT_MINUTES = 30
-
-# How long a generated attendance password stays valid
-PASSWORD_VALIDITY_SECONDS = 120
-
-# Anti proxy: minimum gap required between two attendance submissions
-# coming from the SAME browser (device cookie), regardless of session id.
-ANTI_PROXY_COOLDOWN_SECONDS = 300  # 5 minutes
+DEFAULT_PASSWORD_VALIDITY_SECONDS = 120
+ANTI_PROXY_COOLDOWN_SECONDS = 300  # 5 minutes device cooldown
 
 SUBJECTS = ["PYT", "ECN", "DT", "POC", "LIC", "IC"]
 
@@ -70,18 +63,14 @@ FACULTY_MAP = {
 
 COLLEGE_HEADER = "Government Polytechnic Pune"
 DEPARTMENT_HEADER = "Electronics and Telecommunication Department"
-SYSTEM_HEADER = "Smart Attendance System for L2"
+SYSTEM_HEADER = "Smart Attendance System v2.0 for L2"
 FOOTER_TEXT = "Designed by Nikhil Wani"
+
+csv_lock = threading.Lock()
 
 # ==================================================================
 # IN-MEMORY ACTIVE SESSION STATE
 # ==================================================================
-# NOTE: Since this project intentionally avoids a database, the LIVE
-# attendance session (currently running lecture) is kept in server
-# memory. Historical data (closed sessions) always lives in
-# attendance.csv, so nothing is lost on restart -- only a session that
-# was live at the exact moment of a server restart would need to be
-# started again by the teacher.
 
 active_session = {
     "is_active": False,
@@ -91,75 +80,103 @@ active_session = {
     "password": None,
     "started_at": None,   # datetime
     "expires_at": None,   # datetime
+    "duration_seconds": DEFAULT_PASSWORD_VALIDITY_SECONDS,
 }
-
 
 # ==================================================================
 # HELPER FUNCTIONS
 # ==================================================================
 
 def load_config():
-    """Read teacher security key + any other config from config.json."""
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)
+    """Read teacher security key + config from config.json."""
+    if os.path.exists(CONFIG_PATH):
+        try:
+            with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+                return json.load(f)
+        except Exception:
+            pass
+    return {"teacher_security_key": "GPP@L2#2026"}
 
 
 def get_teacher_key():
-    return load_config().get("teacher_security_key", "")
+    return load_config().get("teacher_security_key", "GPP@L2#2026")
 
 
 def ensure_attendance_csv():
     """Create attendance.csv with header if it does not exist."""
-    if not os.path.exists(ATTENDANCE_CSV):
-        with open(ATTENDANCE_CSV, "w", newline="", encoding="utf-8") as f:
-            writer = csv.writer(f)
-            writer.writerow(
-                ["Student_ID", "Name", "Date", "Session_ID",
-                 "Subject", "Faculty", "Time"]
-            )
+    with csv_lock:
+        if not os.path.exists(ATTENDANCE_CSV) or os.path.getsize(ATTENDANCE_CSV) == 0:
+            with open(ATTENDANCE_CSV, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(
+                    ["Student_ID", "Name", "Date", "Session_ID",
+                     "Subject", "Faculty", "Time"]
+                )
+
+
+def ensure_students_csv():
+    """Create students.csv with header if missing."""
+    with csv_lock:
+        if not os.path.exists(STUDENTS_CSV) or os.path.getsize(STUDENTS_CSV) == 0:
+            with open(STUDENTS_CSV, "w", newline="", encoding="utf-8") as f:
+                writer = csv.writer(f)
+                writer.writerow(["Student_ID", "Name"])
 
 
 def load_students():
     """Return dict {student_id: name} from students.csv."""
+    ensure_students_csv()
     students = {}
-    if os.path.exists(STUDENTS_CSV):
-        with open(STUDENTS_CSV, newline="", encoding="utf-8") as f:
-            reader = csv.DictReader(f)
-            for row in reader:
-                sid = row.get("Student_ID", "").strip()
-                name = row.get("Name", "").strip()
-                if sid:
-                    students[sid] = name
+    with csv_lock:
+        if os.path.exists(STUDENTS_CSV):
+            with open(STUDENTS_CSV, newline="", encoding="utf-8") as f:
+                reader = csv.DictReader(f)
+                for row in reader:
+                    sid = (row.get("Student_ID") or "").strip()
+                    name = (row.get("Name") or "").strip()
+                    if sid:
+                        students[sid] = name
     return students
+
+
+def save_students_dict(students_dict):
+    """Save student dict {sid: name} back to students.csv."""
+    ensure_students_csv()
+    with csv_lock:
+        with open(STUDENTS_CSV, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(["Student_ID", "Name"])
+            for sid, name in sorted(students_dict.items()):
+                writer.writerow([sid, name])
 
 
 def load_attendance_rows():
     """Return list of dict rows from attendance.csv."""
     ensure_attendance_csv()
     rows = []
-    with open(ATTENDANCE_CSV, newline="", encoding="utf-8") as f:
-        reader = csv.DictReader(f)
-        for row in reader:
-            rows.append(row)
+    with csv_lock:
+        with open(ATTENDANCE_CSV, newline="", encoding="utf-8") as f:
+            reader = csv.DictReader(f)
+            for row in reader:
+                rows.append(row)
     return rows
 
 
 def append_attendance_row(row):
     ensure_attendance_csv()
-    with open(ATTENDANCE_CSV, "a", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            [row["Student_ID"], row["Name"], row["Date"],
-             row["Session_ID"], row["Subject"], row["Faculty"], row["Time"]]
-        )
+    with csv_lock:
+        with open(ATTENDANCE_CSV, "a", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                [row["Student_ID"], row["Name"], row["Date"],
+                 row["Session_ID"], row["Subject"], row["Faculty"], row["Time"]]
+            )
 
 
 def generate_next_session_id(subject_code):
     """
     Session ID format = SubjectCode + 3 digits, e.g. PYT001, PYT002 ...
-    Each subject keeps its own independent numbering. We derive the next
-    number by scanning attendance.csv (the permanent record) for the
-    highest existing number used by this subject.
+    Independent numbering derived from attendance.csv.
     """
     rows = load_attendance_rows()
     max_num = 0
@@ -170,19 +187,19 @@ def generate_next_session_id(subject_code):
             suffix = sess[len(prefix):]
             if suffix.isdigit():
                 max_num = max(max_num, int(suffix))
-    # Also consider the currently active session (in case teacher ended
-    # a session with zero attendance, so it never made it into the csv)
+
     if active_session.get("subject") == subject_code and active_session.get("session_id"):
         sess = active_session["session_id"]
         suffix = sess[len(prefix):]
         if suffix.isdigit():
             max_num = max(max_num, int(suffix))
+
     next_num = max_num + 1
     return f"{prefix}{next_num:03d}"
 
 
 def generate_password(length=6):
-    """6 character password made of capital letters + numbers."""
+    """6 character random uppercase + digit password."""
     chars = string.ascii_uppercase + string.digits
     return "".join(random.choice(chars) for _ in range(length))
 
@@ -193,17 +210,18 @@ def is_teacher_authenticated():
     login_time_str = session.get("teacher_auth_time")
     if not login_time_str:
         return False
-    login_time = datetime.fromisoformat(login_time_str)
-    if datetime.now() - login_time > timedelta(minutes=TEACHER_SESSION_TIMEOUT_MINUTES):
-        # Session expired -- force logout
-        session.pop("teacher_auth", None)
-        session.pop("teacher_auth_time", None)
+    try:
+        login_time = datetime.fromisoformat(login_time_str)
+        if datetime.now() - login_time > timedelta(minutes=TEACHER_SESSION_TIMEOUT_MINUTES):
+            session.pop("teacher_auth", None)
+            session.pop("teacher_auth_time", None)
+            return False
+    except Exception:
         return False
     return True
 
 
 def teacher_required(f):
-    """Decorator for routes that require an authenticated teacher."""
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not is_teacher_authenticated():
@@ -214,7 +232,7 @@ def teacher_required(f):
 
 
 def get_active_session_public():
-    """Return a JSON-safe snapshot of the active session (or empty)."""
+    """Return JSON snapshot of active session for dashboard & clients."""
     if not active_session["is_active"]:
         return {"is_active": False}
 
@@ -222,13 +240,17 @@ def get_active_session_public():
     remaining = (active_session["expires_at"] - now).total_seconds()
     password_expired = remaining <= 0
 
-    # Count how many students have marked attendance for this live session
     rows = load_attendance_rows()
-    present_count = sum(
-        1 for r in rows if r.get("Session_ID") == active_session["session_id"]
-    )
+    present_rows = [r for r in rows if r.get("Session_ID") == active_session["session_id"]]
+    present_count = len(present_rows)
     total_students = len(load_students())
     percentage = round((present_count / total_students) * 100, 2) if total_students else 0
+
+    # Get recent present student records for ticker
+    recent_present = [
+        {"student_id": r.get("Student_ID"), "name": r.get("Name"), "time": r.get("Time")}
+        for r in reversed(present_rows[-10:])
+    ]
 
     return {
         "is_active": True,
@@ -238,19 +260,21 @@ def get_active_session_public():
         "password": active_session["password"],
         "password_expired": password_expired,
         "remaining_seconds": max(0, int(remaining)),
+        "duration_seconds": active_session.get("duration_seconds", DEFAULT_PASSWORD_VALIDITY_SECONDS),
         "present_count": present_count,
         "total_students": total_students,
         "attendance_percentage": percentage,
+        "recent_present": recent_present,
     }
 
 
 # ==================================================================
-# STUDENT ROUTES
+# STUDENT ROUTES & PUBLIC APIS
 # ==================================================================
 
 @app.route("/", methods=["GET"])
 def student_login():
-    """Student facing page. Only shows Student ID / Password / button."""
+    """Student portal with Mark Attendance & Student Analytics tabs."""
     return render_template(
         "login.html",
         college=COLLEGE_HEADER, department=DEPARTMENT_HEADER,
@@ -261,8 +285,8 @@ def student_login():
 @app.route("/mark_attendance", methods=["POST"])
 def mark_attendance():
     """
-    AJAX endpoint used by login.html to validate and store attendance.
-    Returns JSON: {status: "success"/"error", message: "..."}
+    AJAX endpoint for marking student attendance.
+    Validates Student ID, Session state, Password & Anti-Proxy rules.
     """
     data = request.get_json(silent=True) or request.form
     student_id = (data.get("student_id") or "").strip()
@@ -270,52 +294,49 @@ def mark_attendance():
 
     students = load_students()
 
-    # 1. Validate student id
+    # 1. Validate student ID
     if student_id not in students:
-        return jsonify(status="error", message="Invalid Student ID"), 200
+        return jsonify(status="error", message="Invalid Student ID. Please check your roll number."), 200
 
-    # 2. Is there an active session at all?
+    # 2. Check if active session exists
     if not active_session["is_active"]:
-        return jsonify(status="error", message="No Active Attendance Session"), 200
+        return jsonify(status="error", message="No active attendance session at this time."), 200
 
     # 3. Password expiry check
     now = datetime.now()
     if now > active_session["expires_at"]:
-        return jsonify(status="error", message="Password Expired"), 200
+        return jsonify(status="error", message="Attendance password has expired for this session."), 200
 
     # 4. Password correctness check
     if password != active_session["password"]:
-        return jsonify(status="error", message="Wrong Password"), 200
+        return jsonify(status="error", message="Incorrect attendance password. Please verify the code."), 200
 
-    # 5. Anti proxy check -- one browser, one attendance, within 5 minutes
-    #    (applies across ANY session, to stop one device proxy-marking
-    #    attendance for many students back to back).
+    # 5. Anti-proxy cooldown check per browser
     last_ts_str = request.cookies.get("gpp_last_attendance_ts")
     if last_ts_str:
         try:
             last_ts = datetime.fromisoformat(last_ts_str)
             elapsed = (now - last_ts).total_seconds()
             if elapsed < ANTI_PROXY_COOLDOWN_SECONDS:
+                remaining_wait = int(ANTI_PROXY_COOLDOWN_SECONDS - elapsed)
                 return jsonify(
                     status="error",
-                    message="Attendance already submitted from this device. "
-                            "Please wait 5 minutes."
+                    message=f"Anti-proxy security active. Attendance already marked from this device. Please wait {remaining_wait}s."
                 ), 200
         except ValueError:
-            pass  # malformed cookie, ignore and continue
+            pass
 
-    # 6. Duplicate rule -- one student can mark attendance only once per
-    #    Session ID (separate from the anti-proxy device cooldown above).
+    # 6. Duplicate check for same session
     session_id = active_session["session_id"]
     rows = load_attendance_rows()
     for row in rows:
         if row.get("Student_ID") == student_id and row.get("Session_ID") == session_id:
             return jsonify(
                 status="error",
-                message="You have already marked attendance for this session."
+                message=f"Attendance already marked for student {student_id} in session {session_id}."
             ), 200
 
-    # All checks passed -- store attendance
+    # Passed checks - Record attendance
     new_row = {
         "Student_ID": student_id,
         "Name": students[student_id],
@@ -329,8 +350,7 @@ def mark_attendance():
 
     resp = jsonify(
         status="success",
-        message=f"Attendance marked successfully for {students[student_id]} "
-                 f"({session_id})"
+        message=f"Success! Attendance marked for {students[student_id]} ({student_id}) in {session_id}."
     )
     resp.set_cookie(
         "gpp_last_attendance_ts", now.isoformat(),
@@ -339,8 +359,18 @@ def mark_attendance():
     return resp
 
 
+@app.route("/api/student_lookup/<student_id>")
+def student_lookup_api(student_id):
+    """Public lookup API for students to check their personal attendance."""
+    student_id = student_id.strip()
+    analytics = compute_student_analytics(student_id)
+    if not analytics:
+        return jsonify(status="error", message="Student ID not found in roster."), 404
+    return jsonify(status="success", data=analytics)
+
+
 # ==================================================================
-# TEACHER AUTH (shared by /generate and /report)
+# TEACHER AUTH
 # ==================================================================
 
 @app.route("/generate_login", methods=["GET", "POST"])
@@ -355,7 +385,7 @@ def generate_login():
             session["teacher_auth_time"] = datetime.now().isoformat()
             return redirect(next_url)
         else:
-            error = "Invalid Security Key"
+            error = "Invalid Teacher Security Key."
 
     return render_template(
         "generate_login.html", error=error, next_url=next_url,
@@ -372,7 +402,7 @@ def logout_teacher():
 
 
 # ==================================================================
-# GENERATE PAGE (teacher creates attendance sessions)
+# GENERATE PAGE (Teacher Attendance Control Hub)
 # ==================================================================
 
 @app.route("/generate")
@@ -392,6 +422,12 @@ def generate_page():
 def start_session():
     data = request.get_json(silent=True) or request.form
     subject = (data.get("subject") or "").strip().upper()
+    try:
+        duration_seconds = int(data.get("duration", DEFAULT_PASSWORD_VALIDITY_SECONDS))
+        if duration_seconds < 30 or duration_seconds > 1800:
+            duration_seconds = DEFAULT_PASSWORD_VALIDITY_SECONDS
+    except (ValueError, TypeError):
+        duration_seconds = DEFAULT_PASSWORD_VALIDITY_SECONDS
 
     if subject not in SUBJECTS:
         return jsonify(status="error", message="Invalid subject selected"), 400
@@ -405,7 +441,7 @@ def start_session():
     session_id = generate_next_session_id(subject)
     password = generate_password()
     started_at = datetime.now()
-    expires_at = started_at + timedelta(seconds=PASSWORD_VALIDITY_SECONDS)
+    expires_at = started_at + timedelta(seconds=duration_seconds)
 
     active_session.update({
         "is_active": True,
@@ -415,6 +451,7 @@ def start_session():
         "password": password,
         "started_at": started_at,
         "expires_at": expires_at,
+        "duration_seconds": duration_seconds,
     })
 
     return jsonify(status="success", session=get_active_session_public())
@@ -431,27 +468,126 @@ def end_session():
         "password": None,
         "started_at": None,
         "expires_at": None,
+        "duration_seconds": DEFAULT_PASSWORD_VALIDITY_SECONDS,
     })
-    return jsonify(status="success", message="Attendance Session Closed")
+    return jsonify(status="success", message="Attendance Session Closed Successfully")
 
 
 @app.route("/session_status")
-@teacher_required
 def session_status():
-    """Polled by generate.html JS every few seconds for the live dashboard."""
+    """Polled by dashboard & client pages."""
     return jsonify(get_active_session_public())
 
 
 # ==================================================================
-# ANALYTICS HELPERS (shared by report + student profile)
+# MANUAL OVERRIDE & ROSTER MANAGEMENT
+# ==================================================================
+
+@app.route("/manual_mark", methods=["POST"])
+@teacher_required
+def manual_mark():
+    """Teacher manual attendance override for a specific student."""
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get("student_id") or "").strip()
+    subject = (data.get("subject") or "").strip().upper()
+    session_id = (data.get("session_id") or "").strip().upper()
+    date_str = (data.get("date") or "").strip() or datetime.now().strftime("%Y-%m-%d")
+
+    students = load_students()
+    if student_id not in students:
+        return jsonify(status="error", message="Student ID not found in roster"), 400
+
+    if subject not in SUBJECTS:
+        return jsonify(status="error", message="Invalid subject code"), 400
+
+    if not session_id:
+        session_id = f"{subject}MAN"
+
+    # Duplicate check
+    rows = load_attendance_rows()
+    for r in rows:
+        if r.get("Student_ID") == student_id and r.get("Session_ID") == session_id:
+            return jsonify(status="error", message="Attendance already recorded for this student & session"), 400
+
+    now = datetime.now()
+    new_row = {
+        "Student_ID": student_id,
+        "Name": students[student_id],
+        "Date": date_str,
+        "Session_ID": session_id,
+        "Subject": subject,
+        "Faculty": FACULTY_MAP[subject],
+        "Time": now.strftime("%H:%M:%S"),
+    }
+    append_attendance_row(new_row)
+
+    return jsonify(status="success", message=f"Manual attendance marked for {students[student_id]} ({student_id})")
+
+
+@app.route("/api/students", methods=["GET"])
+@teacher_required
+def get_students_api():
+    students = load_students()
+    student_list = [{"student_id": sid, "name": name} for sid, name in sorted(students.items())]
+    return jsonify(status="success", students=student_list)
+
+
+@app.route("/api/add_student", methods=["POST"])
+@teacher_required
+def add_student_api():
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get("student_id") or "").strip()
+    name = (data.get("name") or "").strip().upper()
+
+    if not student_id or not name:
+        return jsonify(status="error", message="Student ID and Name are required"), 400
+
+    students = load_students()
+    if student_id in students:
+        return jsonify(status="error", message="Student ID already exists"), 400
+
+    students[student_id] = name
+    save_students_dict(students)
+    return jsonify(status="success", message=f"Added student {name} ({student_id})")
+
+
+@app.route("/api/edit_student", methods=["POST"])
+@teacher_required
+def edit_student_api():
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get("student_id") or "").strip()
+    name = (data.get("name") or "").strip().upper()
+
+    students = load_students()
+    if student_id not in students:
+        return jsonify(status="error", message="Student ID not found"), 404
+
+    students[student_id] = name
+    save_students_dict(students)
+    return jsonify(status="success", message=f"Updated student name to {name}")
+
+
+@app.route("/api/delete_student", methods=["POST"])
+@teacher_required
+def delete_student_api():
+    data = request.get_json(silent=True) or request.form
+    student_id = (data.get("student_id") or "").strip()
+
+    students = load_students()
+    if student_id not in students:
+        return jsonify(status="error", message="Student ID not found"), 404
+
+    del students[student_id]
+    save_students_dict(students)
+    return jsonify(status="success", message=f"Deleted student {student_id}")
+
+
+# ==================================================================
+# ANALYTICS HELPERS
 # ==================================================================
 
 def compute_subject_analytics():
-    """
-    For every subject: faculty, total distinct sessions conducted,
-    total attendance records, average attendance percentage.
-    Average attendance % = (total attendance records / (sessions * total_students)) * 100
-    """
+    """Per subject stats: conducted sessions, records, average percentage."""
     rows = load_attendance_rows()
     total_students = len(load_students()) or 1
 
@@ -474,11 +610,7 @@ def compute_subject_analytics():
 
 
 def compute_student_analytics(student_id):
-    """
-    Per-subject breakdown for one student:
-    sessions conducted (for that subject), sessions attended by student,
-    attendance percentage, plus overall attendance percentage.
-    """
+    """Detailed breakdown for a specific student across all subjects."""
     rows = load_attendance_rows()
     students = load_students()
     name = students.get(student_id)
@@ -517,7 +649,6 @@ def compute_student_analytics(student_id):
 
     overall_pct = round((total_attended / total_conducted) * 100, 2) if total_conducted else 0.0
 
-    # Recent sessions attended by this student (most recent first)
     student_rows = [r for r in rows if r.get("Student_ID") == student_id]
     student_rows.sort(key=lambda r: (r.get("Date", ""), r.get("Time", "")), reverse=True)
     last_date = student_rows[0]["Date"] if student_rows else None
@@ -534,24 +665,20 @@ def compute_student_analytics(student_id):
         "name": name,
         "breakdown": breakdown,
         "overall_percentage": overall_pct,
-        "recent_sessions": student_rows[:10],
+        "recent_sessions": student_rows[:15],
         "last_attendance_date": last_date,
         "status": status,
     }
 
 
 def compute_defaulter_dashboard():
-    """
-    Classify every student into Safe / Warning / Defaulter zone based
-    on their OVERALL attendance percentage across all subjects, and
-    also build a flattened subject-wise table for the defaulter view.
-    """
+    """Classification of all students into Safe / Warning / Defaulter zones."""
     students = load_students()
     safe, warning, defaulter = 0, 0, 0
     table_rows = []
     summary = []
 
-    for sid, name in students.items():
+    for sid, name in sorted(students.items()):
         analytics = compute_student_analytics(sid)
         overall = analytics["overall_percentage"]
 
@@ -634,16 +761,8 @@ def report_page():
 @app.route("/report_data")
 @teacher_required
 def report_data():
-    """
-    Central JSON endpoint used by report.html's JavaScript to render:
-    - filtered attendance table
-    - subject analytics cards + charts
-    - defaulter dashboard
-    - today's summary
-    """
     rows = load_attendance_rows()
 
-    # ---- filters ----
     student_id_q = (request.args.get("student_id") or "").strip().lower()
     student_name_q = (request.args.get("student_name") or "").strip().lower()
     date_q = (request.args.get("date") or "").strip()
@@ -667,7 +786,6 @@ def report_data():
             continue
         filtered.append(r)
 
-    # Sort newest first (by Date then Time)
     filtered.sort(key=lambda r: (r.get("Date", ""), r.get("Time", "")), reverse=True)
 
     total_records = len(rows)
@@ -686,7 +804,6 @@ def report_data():
 @app.route("/student_search")
 @teacher_required
 def student_search():
-    """Search students by ID or name for the Student Analytics section."""
     q = (request.args.get("q") or "").strip().lower()
     students = load_students()
     matches = [
@@ -694,7 +811,7 @@ def student_search():
         for sid, name in students.items()
         if q in sid.lower() or q in name.lower()
     ]
-    return jsonify(matches=matches[:20])
+    return jsonify(matches=matches[:25])
 
 
 @app.route("/student_analytics/<student_id>")
@@ -709,25 +826,21 @@ def student_analytics_api(student_id):
 @app.route("/reset_attendance", methods=["POST"])
 @teacher_required
 def reset_attendance():
-    """
-    Re-authenticate with the teacher security key, then wipe all
-    attendance records but KEEP the CSV header. students.csv is
-    never touched.
-    """
     data = request.get_json(silent=True) or request.form
     entered_key = (data.get("security_key") or "").strip()
 
     if entered_key != get_teacher_key():
         return jsonify(status="error", message="Invalid Security Key"), 200
 
-    with open(ATTENDANCE_CSV, "w", newline="", encoding="utf-8") as f:
-        writer = csv.writer(f)
-        writer.writerow(
-            ["Student_ID", "Name", "Date", "Session_ID",
-             "Subject", "Faculty", "Time"]
-        )
+    with csv_lock:
+        with open(ATTENDANCE_CSV, "w", newline="", encoding="utf-8") as f:
+            writer = csv.writer(f)
+            writer.writerow(
+                ["Student_ID", "Name", "Date", "Session_ID",
+                 "Subject", "Faculty", "Time"]
+            )
 
-    return jsonify(status="success", message="Attendance Reset Successfully")
+    return jsonify(status="success", message="All Attendance Records Reset Successfully")
 
 
 # ==================================================================
@@ -750,12 +863,13 @@ def student_profile(student_id):
 
 
 # ==================================================================
-# DOWNLOADS
+# DOWNLOADS & PDF EXPORT
 # ==================================================================
 
 @app.route("/download_csv")
 @teacher_required
 def download_csv():
+    ensure_attendance_csv()
     return send_file(
         ATTENDANCE_CSV, as_attachment=True,
         download_name="attendance.csv", mimetype="text/csv"
@@ -765,11 +879,6 @@ def download_csv():
 @app.route("/download_pdf")
 @teacher_required
 def download_pdf():
-    """
-    Build a professional PDF attendance report using reportlab:
-    College header, department, date, attendance table, summary.
-    Optional filters are accepted via query string, same as /report_data.
-    """
     rows = load_attendance_rows()
 
     subject_q = (request.args.get("subject") or "").strip()
@@ -829,7 +938,7 @@ def download_pdf():
 
     elements.append(Spacer(1, 14))
     elements.append(Paragraph(
-        f"Total Records: {len(rows)}", styles["Normal"]
+        f"Total Attendance Entries: {len(rows)}", styles["Normal"]
     ))
     elements.append(Paragraph(FOOTER_TEXT, sub_style))
 
@@ -846,7 +955,6 @@ def download_pdf():
 @app.route("/download_student_pdf/<student_id>")
 @teacher_required
 def download_student_pdf(student_id):
-    """Individual student profile PDF (Print PDF button on profile page)."""
     analytics = compute_student_analytics(student_id)
     if analytics is None:
         return redirect(url_for("report_page"))
@@ -869,7 +977,7 @@ def download_student_pdf(student_id):
         Paragraph(SYSTEM_HEADER, sub_style),
         Spacer(1, 10),
         Paragraph(f"Student Profile: {analytics['name']} ({analytics['student_id']})", styles["Heading2"]),
-        Paragraph(f"Overall Attendance: {analytics['overall_percentage']}% ({analytics['status']})", styles["Normal"]),
+        Paragraph(f"Overall Attendance: {analytics['overall_percentage']}% ({analytics['status']} Zone)", styles["Normal"]),
         Spacer(1, 10),
     ]
 
@@ -903,7 +1011,7 @@ def download_student_pdf(student_id):
 
 
 # ==================================================================
-# ERROR HANDLERS
+# ERROR HANDLERS & SERVER ENTRY POINT
 # ==================================================================
 
 @app.errorhandler(404)
@@ -914,10 +1022,7 @@ def not_found(e):
     ), 404
 
 
-# ==================================================================
-# ENTRY POINT
-# ==================================================================
-
 if __name__ == "__main__":
+    ensure_students_csv()
     ensure_attendance_csv()
-    app.run(debug=True, host="0.0.0.0", port=5000)
+    app.run(debug=True, host="0.0.0.0", port=5050)
