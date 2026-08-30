@@ -395,6 +395,7 @@ def mark_attendance():
                 # Indoor GPS Jitter compensation:
                 # Desktop browser IP location & indoor phone GPS signals can jitter by 150m-250m inside rooms/buildings.
                 # Allow a baseline indoor tolerance of 250m (or same-network 400m) to ensure students in the room pass cleanly.
+                max_allowed = active_session.get("allowed_radius_meters", 50)
                 indoor_tolerance = 400 if same_network else 250
                 effective_allowed = max(max_allowed, indoor_tolerance)
 
