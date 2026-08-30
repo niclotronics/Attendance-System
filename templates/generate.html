@@ -100,7 +100,10 @@
           <!-- QR Code Renderer -->
           <div style="text-align:center;margin-top:16px;">
             <div class="qr-container" id="sessionQRCode"></div>
-            <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 12px;">Students can scan QR Code to auto-fill password</p>
+            <p style="font-size:0.78rem;color:var(--text-muted);margin:6px 0 4px;">Students can scan QR Code to auto-fill password</p>
+            <div id="localIpNotice" style="font-size:0.75rem;color:var(--warning);background:rgba(245,158,11,0.1);padding:6px 10px;border-radius:6px;margin-bottom:10px;display:none;">
+              <i class="bi bi-info-circle-fill"></i> For mobile phones on Wi-Fi, open this page using your local IP URL (e.g. <code>http://192.168.x.x:5050/generate</code>) so QR code encodes the network address.
+            </div>
             <button class="btn btn-secondary btn-sm btn-block" onclick="openModal('projectorModal')">
               <i class="bi bi-aspect-ratio"></i> Fullscreen Classroom Projector Mode
             </button>
@@ -235,6 +238,10 @@ function renderActiveSession(sess) {
   document.getElementById("projPresent").innerText = sess.present_count + " / " + sess.total_students;
 
   // Render QR Code
+  const isLocal = (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1");
+  const localNotice = document.getElementById("localIpNotice");
+  if (localNotice) localNotice.style.display = isLocal ? "block" : "none";
+
   const qrUrl = window.location.origin + "/?session=" + sess.session_id + "&password=" + sess.password;
   renderQRCode("sessionQRCode", qrUrl, 160);
   renderQRCode("projQRCode", qrUrl, 240);

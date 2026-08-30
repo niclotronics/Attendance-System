@@ -312,97 +312,103 @@ def mark_attendance():
     AJAX endpoint for marking student attendance.
     Validates Student ID, Session state, Password & Anti-Proxy rules.
     """
-    data = request.get_json(silent=True) or request.form
-    student_id = (data.get("student_id") or "").strip()
-    password = (data.get("password") or "").strip().upper()
+    try:
+        data = request.get_json(silent=True) or request.form
+        if not data:
+            return jsonify(status="error", message="Invalid request format."), 200
 
-    students = load_students()
+        student_id = (data.get("student_id") or "").strip()
+        password = (data.get("password") or "").strip().upper()
 
-    # 1. Validate student ID
-    if student_id not in students:
-        return jsonify(status="error", message="Invalid Student ID. Please check your roll number."), 200
+        students = load_students()
 
-    # 2. Check if active session exists
-    if not active_session["is_active"]:
-        return jsonify(status="error", message="No active attendance session at this time."), 200
+        # 1. Validate student ID
+        if student_id not in students:
+            return jsonify(status="error", message="Invalid Student ID. Please check your roll number."), 200
 
-    # 3. Password expiry check
-    now = datetime.now()
-    if now > active_session["expires_at"]:
-        return jsonify(status="error", message="Attendance password has expired for this session."), 200
+        # 2. Check if active session exists
+        if not active_session["is_active"]:
+            return jsonify(status="error", message="No active attendance session at this time."), 200
 
-    # 4. Password correctness check
-    if password != active_session["password"]:
-        return jsonify(status="error", message="Incorrect attendance password. Please verify the code."), 200
+        # 3. Password expiry check
+        now = datetime.now()
+        if now > active_session["expires_at"]:
+            return jsonify(status="error", message="Attendance password has expired for this session."), 200
 
-    # 4.5 Geofence Location Check (if enabled by teacher for this session)
-    if active_session.get("geo_enabled"):
-        student_lat = data.get("student_lat")
-        student_lng = data.get("student_lng")
-        if student_lat is None or student_lng is None:
-            return jsonify(
-                status="error",
-                message="GPS Location required for this session! Please enable Location Services on your device."
-            ), 200
+        # 4. Password correctness check
+        if password != active_session["password"]:
+            return jsonify(status="error", message="Incorrect attendance password. Please verify the code."), 200
 
-        if active_session.get("teacher_lat") is not None and active_session.get("teacher_lng") is not None:
-            dist_meters = haversine_distance(
-                active_session["teacher_lat"], active_session["teacher_lng"],
-                student_lat, student_lng
-            )
-            max_allowed = active_session.get("allowed_radius_meters", 50)
-            if dist_meters > max_allowed:
+        # 4.5 Geofence Location Check (if enabled by teacher for this session)
+        if active_session.get("geo_enabled"):
+            student_lat = data.get("student_lat")
+            student_lng = data.get("student_lng")
+            if student_lat is None or student_lng is None:
                 return jsonify(
                     status="error",
-                    message=f"Location Out of Bounds! You are {int(dist_meters)}m away from classroom (Max allowed: {max_allowed}m)."
+                    message="GPS Location required for this session! Please enable Location Services on your device."
                 ), 200
 
-    # 5. Anti-proxy cooldown check per browser
-    last_ts_str = request.cookies.get("gpp_last_attendance_ts")
-    if last_ts_str:
-        try:
-            last_ts = datetime.fromisoformat(last_ts_str)
-            elapsed = (now - last_ts).total_seconds()
-            if elapsed < ANTI_PROXY_COOLDOWN_SECONDS:
-                remaining_wait = int(ANTI_PROXY_COOLDOWN_SECONDS - elapsed)
+            if active_session.get("teacher_lat") is not None and active_session.get("teacher_lng") is not None:
+                dist_meters = haversine_distance(
+                    active_session["teacher_lat"], active_session["teacher_lng"],
+                    student_lat, student_lng
+                )
+                max_allowed = active_session.get("allowed_radius_meters", 50)
+                if dist_meters > max_allowed:
+                    return jsonify(
+                        status="error",
+                        message=f"Location Out of Bounds! You are {int(dist_meters)}m away from classroom (Max allowed: {max_allowed}m)."
+                    ), 200
+
+        # 5. Anti-proxy cooldown check per browser
+        last_ts_str = request.cookies.get("gpp_last_attendance_ts")
+        if last_ts_str:
+            try:
+                last_ts = datetime.fromisoformat(last_ts_str)
+                elapsed = (now - last_ts).total_seconds()
+                if elapsed < ANTI_PROXY_COOLDOWN_SECONDS:
+                    remaining_wait = int(ANTI_PROXY_COOLDOWN_SECONDS - elapsed)
+                    return jsonify(
+                        status="error",
+                        message=f"Anti-proxy security active. Attendance already marked from this device. Please wait {remaining_wait}s."
+                    ), 200
+            except ValueError:
+                pass
+
+        # 6. Duplicate check for same session
+        session_id = active_session["session_id"]
+        rows = load_attendance_rows()
+        for row in rows:
+            if row.get("Student_ID") == student_id and row.get("Session_ID") == session_id:
                 return jsonify(
                     status="error",
-                    message=f"Anti-proxy security active. Attendance already marked from this device. Please wait {remaining_wait}s."
+                    message=f"Attendance already marked for student {student_id} in session {session_id}."
                 ), 200
-        except ValueError:
-            pass
 
-    # 6. Duplicate check for same session
-    session_id = active_session["session_id"]
-    rows = load_attendance_rows()
-    for row in rows:
-        if row.get("Student_ID") == student_id and row.get("Session_ID") == session_id:
-            return jsonify(
-                status="error",
-                message=f"Attendance already marked for student {student_id} in session {session_id}."
-            ), 200
+        # Passed checks - Record attendance
+        new_row = {
+            "Student_ID": student_id,
+            "Name": students[student_id],
+            "Date": now.strftime("%Y-%m-%d"),
+            "Session_ID": session_id,
+            "Subject": active_session["subject"],
+            "Faculty": active_session["faculty"],
+            "Time": now.strftime("%H:%M:%S"),
+        }
+        append_attendance_row(new_row)
 
-    # Passed checks - Record attendance
-    new_row = {
-        "Student_ID": student_id,
-        "Name": students[student_id],
-        "Date": now.strftime("%Y-%m-%d"),
-        "Session_ID": session_id,
-        "Subject": active_session["subject"],
-        "Faculty": active_session["faculty"],
-        "Time": now.strftime("%H:%M:%S"),
-    }
-    append_attendance_row(new_row)
-
-    resp = jsonify(
-        status="success",
-        message=f"Success! Attendance marked for {students[student_id]} ({student_id}) in {session_id}."
-    )
-    resp.set_cookie(
-        "gpp_last_attendance_ts", now.isoformat(),
-        max_age=ANTI_PROXY_COOLDOWN_SECONDS, httponly=True, samesite="Lax"
-    )
-    return resp
+        resp = jsonify(
+            status="success",
+            message=f"Success! Attendance marked for {students[student_id]} ({student_id}) in {session_id}."
+        )
+        resp.set_cookie(
+            "gpp_last_attendance_ts", now.isoformat(),
+            max_age=ANTI_PROXY_COOLDOWN_SECONDS, httponly=True, samesite="Lax"
+        )
+        return resp
+    except Exception as e:
+        return jsonify(status="error", message=f"Server processing error: {str(e)}"), 200
 
 
 @app.route("/api/student_lookup/<student_id>")
