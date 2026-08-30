@@ -81,11 +81,31 @@ active_session = {
     "started_at": None,   # datetime
     "expires_at": None,   # datetime
     "duration_seconds": DEFAULT_PASSWORD_VALIDITY_SECONDS,
+    "geo_enabled": False,
+    "teacher_lat": None,
+    "teacher_lng": None,
+    "allowed_radius_meters": 50,
 }
 
 # ==================================================================
 # HELPER FUNCTIONS
 # ==================================================================
+
+def haversine_distance(lat1, lon1, lat2, lon2):
+    """Calculate distance between two GPS coordinates in meters using Haversine formula."""
+    try:
+        R = 6371000  # Radius of Earth in meters
+        phi1 = math.radians(float(lat1))
+        phi2 = math.radians(float(lat2))
+        delta_phi = math.radians(float(lat2) - float(lat1))
+        delta_lambda = math.radians(float(lon2) - float(lon1))
+
+        a = math.sin(delta_phi / 2.0) ** 2 + math.cos(phi1) * math.cos(phi2) * math.sin(delta_lambda / 2.0) ** 2
+        c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
+        return R * c
+    except (ValueError, TypeError):
+        return 999999.0
+
 
 def load_config():
     """Read teacher security key + config from config.json."""
@@ -263,6 +283,8 @@ def get_active_session_public():
         "password_expired": password_expired,
         "remaining_seconds": max(0, int(remaining)),
         "duration_seconds": active_session.get("duration_seconds", DEFAULT_PASSWORD_VALIDITY_SECONDS),
+        "geo_enabled": active_session.get("geo_enabled", False),
+        "allowed_radius_meters": active_session.get("allowed_radius_meters", 50),
         "present_count": present_count,
         "total_students": total_students,
         "attendance_percentage": percentage,
@@ -312,6 +334,28 @@ def mark_attendance():
     # 4. Password correctness check
     if password != active_session["password"]:
         return jsonify(status="error", message="Incorrect attendance password. Please verify the code."), 200
+
+    # 4.5 Geofence Location Check (if enabled by teacher for this session)
+    if active_session.get("geo_enabled"):
+        student_lat = data.get("student_lat")
+        student_lng = data.get("student_lng")
+        if student_lat is None or student_lng is None:
+            return jsonify(
+                status="error",
+                message="GPS Location required for this session! Please enable Location Services on your device."
+            ), 200
+
+        if active_session.get("teacher_lat") is not None and active_session.get("teacher_lng") is not None:
+            dist_meters = haversine_distance(
+                active_session["teacher_lat"], active_session["teacher_lng"],
+                student_lat, student_lng
+            )
+            max_allowed = active_session.get("allowed_radius_meters", 50)
+            if dist_meters > max_allowed:
+                return jsonify(
+                    status="error",
+                    message=f"Location Out of Bounds! You are {int(dist_meters)}m away from classroom (Max allowed: {max_allowed}m)."
+                ), 200
 
     # 5. Anti-proxy cooldown check per browser
     last_ts_str = request.cookies.get("gpp_last_attendance_ts")
@@ -431,6 +475,16 @@ def start_session():
     except (ValueError, TypeError):
         duration_seconds = DEFAULT_PASSWORD_VALIDITY_SECONDS
 
+    geo_enabled = bool(data.get("geo_enabled"))
+    teacher_lat = data.get("teacher_lat")
+    teacher_lng = data.get("teacher_lng")
+    try:
+        allowed_radius = int(data.get("radius", 50))
+        if allowed_radius < 10 or allowed_radius > 1000:
+            allowed_radius = 50
+    except (ValueError, TypeError):
+        allowed_radius = 50
+
     if subject not in SUBJECTS:
         return jsonify(status="error", message="Invalid subject selected"), 400
 
@@ -438,6 +492,12 @@ def start_session():
         return jsonify(
             status="error",
             message="A session is already active. End it before starting a new one."
+        ), 400
+
+    if geo_enabled and (teacher_lat is None or teacher_lng is None):
+        return jsonify(
+            status="error",
+            message="GPS Location required to enable Geofenced session. Please allow location access."
         ), 400
 
     session_id = generate_next_session_id(subject)
@@ -454,6 +514,10 @@ def start_session():
         "started_at": started_at,
         "expires_at": expires_at,
         "duration_seconds": duration_seconds,
+        "geo_enabled": geo_enabled,
+        "teacher_lat": float(teacher_lat) if teacher_lat is not None else None,
+        "teacher_lng": float(teacher_lng) if teacher_lng is not None else None,
+        "allowed_radius_meters": allowed_radius,
     })
 
     return jsonify(status="success", session=get_active_session_public())
@@ -471,6 +535,10 @@ def end_session():
         "started_at": None,
         "expires_at": None,
         "duration_seconds": DEFAULT_PASSWORD_VALIDITY_SECONDS,
+        "geo_enabled": False,
+        "teacher_lat": None,
+        "teacher_lng": None,
+        "allowed_radius_meters": 50,
     })
     return jsonify(status="success", message="Attendance Session Closed Successfully")
 

@@ -53,6 +53,23 @@
             </select>
           </div>
 
+          <div class="form-group" style="margin-top:14px;background:rgba(0,173,181,0.06);padding:14px;border-radius:var(--radius-md);border:1px solid rgba(0,173,181,0.2);">
+            <label style="display:flex;align-items:center;gap:10px;cursor:pointer;margin-bottom:0;font-weight:600;color:var(--text-main);">
+              <input type="checkbox" id="geoEnable" style="width:18px;height:18px;accent-color:var(--accent);" onchange="document.getElementById('geoRadiusGroup').style.display = this.checked ? 'block' : 'none';">
+              <i class="bi bi-geo-alt-fill" style="color:var(--accent);"></i> Enable GPS Geofence Location Security
+            </label>
+
+            <div id="geoRadiusGroup" style="display:none;margin-top:12px;">
+              <label for="geoRadius" style="font-size:0.82rem;color:var(--text-muted);">Allowed Classroom Radius</label>
+              <select id="geoRadius" class="form-control" style="font-size:0.88rem;">
+                <option value="30">30 Meters (Strict Classroom)</option>
+                <option value="50" selected>50 Meters (Department Wing - Recommended)</option>
+                <option value="100">100 Meters (Building Campus)</option>
+                <option value="200">200 Meters (Full College Campus)</option>
+              </select>
+            </div>
+          </div>
+
           <button class="btn btn-primary btn-block" id="startBtn">
             <i class="bi bi-play-circle-fill"></i> Start Attendance Session
           </button>
@@ -267,15 +284,48 @@ async function pollStatus() {
 document.getElementById("startBtn").addEventListener("click", async () => {
   const subject = document.getElementById("subject").value;
   const duration = document.getElementById("duration").value;
+  const geoEnable = document.getElementById("geoEnable").checked;
+  const radius = document.getElementById("geoRadius").value;
+
   clearAlert(controlAlert);
   if (!subject) {
     showAlert(controlAlert, "Please select a subject first.", "error");
     return;
   }
-  const data = await postJSON("/start_session", { subject, duration });
+
+  let teacher_lat = null, teacher_lng = null;
+
+  if (geoEnable) {
+    showAlert(controlAlert, "<i class='bi bi-geo-alt-fill'></i> Acquiring classroom GPS location...", "warning");
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0
+        });
+      });
+      teacher_lat = pos.coords.latitude;
+      teacher_lng = pos.coords.longitude;
+    } catch (geoErr) {
+      showAlert(controlAlert, "GPS Location Access Denied or Timed Out. Please allow location access in browser or uncheck GPS Geofencing.", "error");
+      return;
+    }
+  }
+
+  const payload = {
+    subject,
+    duration,
+    geo_enabled: geoEnable,
+    teacher_lat,
+    teacher_lng,
+    radius
+  };
+
+  const data = await postJSON("/start_session", payload);
   if (data.status === "success") {
     renderActiveSession(data.session);
-    showToast("Attendance session started successfully!", "success");
+    showToast(geoEnable ? `Geofenced Session Started (${radius}m Radius)` : "Attendance session started!", "success");
   } else {
     showAlert(controlAlert, data.message, "error");
   }

@@ -122,13 +122,37 @@ form.addEventListener("submit", async (e) => {
   e.preventDefault();
   clearAlert(alertBox);
   submitBtn.disabled = true;
-  submitBtn.innerHTML = '<i class="bi bi-hourglass-split"></i> Submitting...';
+  submitBtn.innerHTML = '<i class="bi bi-geo-alt"></i> Verifying Location...';
 
   const student_id = document.getElementById("student_id").value.trim();
   const password = document.getElementById("password").value.trim().toUpperCase();
 
+  let student_lat = null, student_lng = null;
+
+  if ("geolocation" in navigator) {
+    try {
+      const pos = await new Promise((resolve, reject) => {
+        navigator.geolocation.getCurrentPosition(resolve, reject, {
+          enableHighAccuracy: true,
+          timeout: 8000,
+          maximumAge: 0
+        });
+      });
+      student_lat = pos.coords.latitude;
+      student_lng = pos.coords.longitude;
+    } catch (gErr) {
+      console.warn("Student Geolocation unavailable or permission denied:", gErr);
+    }
+  }
+
   try {
-    const data = await postJSON("/mark_attendance", { student_id, password });
+    const data = await postJSON("/mark_attendance", {
+      student_id,
+      password,
+      student_lat,
+      student_lng
+    });
+
     if (data.status === "success") {
       showAlert(alertBox, data.message, "success");
       showToast(data.message, "success");
