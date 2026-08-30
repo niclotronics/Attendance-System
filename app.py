@@ -225,6 +225,8 @@ def teacher_required(f):
     @wraps(f)
     def wrapper(*args, **kwargs):
         if not is_teacher_authenticated():
+            if request.path.startswith("/api/") or request.path in ["/report_data", "/session_status", "/start_session", "/end_session", "/manual_mark", "/reset_attendance"]:
+                return jsonify(status="error", message="Teacher session expired. Redirecting to login...", redirect=url_for("generate_login", next=request.path)), 200
             nxt = request.path
             return redirect(url_for("generate_login", next=nxt))
         return f(*args, **kwargs)

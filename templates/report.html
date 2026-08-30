@@ -267,14 +267,25 @@ async function fetchReportData() {
 
   try {
     const data = await getJSON("/report_data?" + params.toString());
+    if (!data || data.status === "error") {
+      showToast(data ? data.message : "Failed to load report data", "error");
+      return;
+    }
     renderOverview(data);
-    renderCharts(data);
+    try {
+      if (typeof Chart !== "undefined") {
+        renderCharts(data);
+      }
+    } catch (cErr) {
+      console.warn("Chart rendering warning:", cErr);
+    }
     renderSubjectCards(data.subject_analytics);
     renderDefaulterDashboard(data.defaulter_dashboard);
     renderTodaySummary(data.today_summary);
     renderTable(data.rows);
   } catch (err) {
-    showToast("Failed to fetch report data", "error");
+    console.error("fetchReportData Error:", err);
+    showToast("Failed to fetch report data: " + (err.message || err), "error");
   }
 }
 

@@ -85,9 +85,17 @@ async function postJSON(url, payload) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload || {}),
     });
-    return await res.json();
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const data = await res.json();
+      if (data && data.redirect) {
+        window.location.href = data.redirect;
+      }
+      return data;
+    }
+    throw new Error("Server returned non-JSON response");
   } catch (err) {
-    console.error("POST Error:", err);
+    console.error("POST Error:", url, err);
     throw err;
   }
 }
@@ -96,9 +104,17 @@ async function postJSON(url, payload) {
 async function getJSON(url) {
   try {
     const res = await fetch(url);
-    return await res.json();
+    const contentType = res.headers.get("content-type");
+    if (contentType && contentType.includes("application/json")) {
+      const data = await res.json();
+      if (data && data.redirect) {
+        window.location.href = data.redirect;
+      }
+      return data;
+    }
+    throw new Error("Server returned non-JSON response");
   } catch (err) {
-    console.error("GET Error:", err);
+    console.error("GET Error:", url, err);
     throw err;
   }
 }
