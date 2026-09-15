@@ -1,3 +1,8 @@
 {
-    "teacher_security_key": "GPP@L2#2026"
+    "teacher_security_key": "GPP@L2#2026",
+    "MAIL_USERNAME": "niclotronics@gmail.com",
+    "MAIL_PASSWORD": "lkdx gsto edis diig",
+    "MAIL_SERVER": "smtp.gmail.com",
+    "MAIL_PORT": 587,
+    "MAIL_USE_TLS": true
 }
