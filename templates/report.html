@@ -74,12 +74,6 @@
         </div>
       </div>
     </div>
-    <div class="glass-card" style="margin-top:20px;">
-      <h3 style="margin-top:0;">Student-Wise Attendance (%)</h3>
-      <div class="chart-container" style="position: relative; height: 320px; width: 100%;">
-        <canvas id="hbarChart"></canvas>
-      </div>
-    </div>
 
     <!-- ============ SUBJECT ANALYTICS ============ -->
     <div class="section-title"><i class="bi bi-journal-bookmark-fill"></i> Subject Breakdown</div>
@@ -442,7 +436,7 @@
 <script src="{{ url_for('static', filename='script.js') }}"></script>
 <script>
 let defaulterDataRaw = [];
-let chartPie = null, chartBar = null, chartHbar = null;
+let chartPie = null, chartBar = null;
 
 async function ensureChartLoaded() {
   if (typeof Chart !== "undefined") return true;
@@ -522,9 +516,8 @@ function renderCharts(data) {
 
   const pieCanvas = document.getElementById("pieChart");
   const barCanvas = document.getElementById("barChart");
-  const hbarCanvas = document.getElementById("hbarChart");
 
-  if (!pieCanvas || !barCanvas || !hbarCanvas) return;
+  if (!pieCanvas || !barCanvas) return;
 
   // Pie Chart
   if (chartPie) chartPie.destroy();
@@ -569,34 +562,6 @@ function renderCharts(data) {
       scales: {
         x: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" } },
         y: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" }, beginAtZero: true, max: 100 }
-      }
-    }
-  });
-
-  // Horizontal Bar Chart
-  const topStudents = (data.defaulter_dashboard && data.defaulter_dashboard.student_summary)
-    ? data.defaulter_dashboard.student_summary.slice(0, 15) : [];
-
-  if (chartHbar) chartHbar.destroy();
-  chartHbar = new Chart(hbarCanvas, {
-    type: "bar",
-    data: {
-      labels: topStudents.map(s => s.student_id + " - " + s.name),
-      datasets: [{
-        label: "Overall %",
-        data: topStudents.map(s => s.overall_percentage),
-        backgroundColor: topStudents.map(s => s.overall_percentage >= 85 ? "#10b981" : s.overall_percentage >= 75 ? "#f59e0b" : "#ef4444"),
-        borderRadius: 4
-      }]
-    },
-    options: {
-      indexAxis: 'y',
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { legend: { display: false } },
-      scales: {
-        x: { ticks: { color: "#f8fafc" }, grid: { color: "rgba(255,255,255,0.08)" }, max: 100 },
-        y: { ticks: { color: "#f8fafc", font: { size: 11 } }, grid: { color: "rgba(255,255,255,0.08)" } }
       }
     }
   });
